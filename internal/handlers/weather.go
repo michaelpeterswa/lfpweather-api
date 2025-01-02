@@ -43,7 +43,11 @@ func (s *WeatherHandler) GetGeneric24h(w http.ResponseWriter, r *http.Request, c
 			return
 		}
 
-		w.Write([]byte(problemJSON))
+		_, err = w.Write([]byte(problemJSON))
+		if err != nil {
+			slog.Error("failed to write problem", slog.String("error", err.Error()))
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -67,7 +71,11 @@ func (s *WeatherHandler) GetGeneric24h(w http.ResponseWriter, r *http.Request, c
 			return
 		}
 
-		w.Write([]byte(problemJSON))
+		_, err = w.Write([]byte(problemJSON))
+		if err != nil {
+			slog.Error("failed to write problem", slog.String("error", err.Error()))
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -92,7 +100,11 @@ func (s *WeatherHandler) GetGeneric24h(w http.ResponseWriter, r *http.Request, c
 			return
 		}
 
-		w.Write([]byte(problemJSON))
+		_, err = w.Write([]byte(problemJSON))
+		if err != nil {
+			slog.Error("failed to write problem", slog.String("error", err.Error()))
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		return
 	}
 }

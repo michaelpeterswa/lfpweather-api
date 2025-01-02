@@ -67,7 +67,11 @@ func (amc *AuthenticationMiddlewareClient) AuthenticationMiddleware(next http.Ha
 					return
 				}
 
-				w.Write([]byte(problemJSON))
+				_, err = w.Write([]byte(problemJSON))
+				if err != nil {
+					slog.Error("failed to write problem", slog.String("error", err.Error()))
+					w.WriteHeader(http.StatusInternalServerError)
+				}
 				return
 			}
 
@@ -91,7 +95,11 @@ func (amc *AuthenticationMiddlewareClient) AuthenticationMiddleware(next http.Ha
 				return
 			}
 
-			w.Write([]byte(problemJSON))
+			_, err = w.Write([]byte(problemJSON))
+			if err != nil {
+				slog.Error("failed to write problem", slog.String("error", err.Error()))
+				w.WriteHeader(http.StatusInternalServerError)
+			}
 		})
 
 	}

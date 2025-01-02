@@ -1,0 +1,13 @@
+SELECT
+    time_bucket('1h', "time") AS "time",
+    AVG({{.ColumnName}}),
+    MIN({{.ColumnName}}),
+    MAX({{.ColumnName}})
+FROM
+    sensors.vantagepro2plus
+WHERE
+    "time" > NOW() - INTERVAL '1 day'
+GROUP BY
+    1
+ORDER BY
+    1

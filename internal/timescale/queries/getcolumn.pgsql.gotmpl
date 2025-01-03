@@ -1,12 +1,12 @@
 SELECT
-    time_bucket('1h', "time") AS "time",
+    time_bucket('{{.TimeBucket}}', "time") AS "time",
     AVG({{.ColumnName}}),
     MIN({{.ColumnName}}),
     MAX({{.ColumnName}})
 FROM
     sensors.vantagepro2plus
 WHERE
-    "time" > NOW() - INTERVAL '1 day'
+    "time" > NOW() - INTERVAL '{{.LookbackInterval}}'
 GROUP BY
     1
 ORDER BY

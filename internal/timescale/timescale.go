@@ -22,29 +22,41 @@ import (
 )
 
 type TimescaleClient struct {
-	Pool              *pgxpool.Pool
-	Dfly              *dragonfly.DragonflyClient
-	getColumnTemplate *template.Template
+	Pool                  *pgxpool.Pool
+	Dfly                  *dragonfly.DragonflyClient
+	getColumnTemplate     *template.Template
+	getColumnLastTemplate *template.Template
 }
 
 //go:embed queries/getcolumn.pgsql.gotmpl
 var getColumnTemplate string
 
-type TemplateParameters struct {
+//go:embed queries/getcolumnlast.pgsql.gotmpl
+var getColumnLastTemplate string
+
+type GetColumnTemplateParameters struct {
 	ColumnName       string
 	TimeBucket       string
 	LookbackInterval string
 }
 
-func (t *TemplateParameters) String() string {
+type GetColumnLastTemplateParameters struct {
+	ColumnName string
+}
+
+func (t *GetColumnTemplateParameters) String() string {
 	return fmt.Sprintf("%s-%s-%s",
 		strings.ReplaceAll(t.ColumnName, " ", ""),
 		strings.ReplaceAll(t.TimeBucket, " ", ""),
 		strings.ReplaceAll(t.LookbackInterval, " ", ""))
 }
 
-func (t *TemplateParameters) Hash() string {
+func (t *GetColumnTemplateParameters) Hash() string {
 	return strconv.FormatUint(xxhash.Sum64String(t.String()), 16)
+}
+
+func (t *GetColumnLastTemplateParameters) Hash() string {
+	return strconv.FormatUint(xxhash.Sum64String(t.ColumnName), 16)
 }
 
 type TimescaleClientOption func(*TimescaleClient)
@@ -58,7 +70,12 @@ func WithDragonflyClient(dfly *dragonfly.DragonflyClient) TimescaleClientOption 
 func NewTimescaleClient(ctx context.Context, connString string, opts ...TimescaleClientOption) (*TimescaleClient, error) {
 	timescaleClient := &TimescaleClient{}
 
-	tmpl, err := template.New("getColumn").Parse(getColumnTemplate)
+	getColumnTmpl, err := template.New("getColumn").Parse(getColumnTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("parse query template: %w", err)
+	}
+
+	getColumnLastTmpl, err := template.New("getColumnLast").Parse(getColumnLastTemplate)
 	if err != nil {
 		return nil, fmt.Errorf("parse query template: %w", err)
 	}
@@ -88,7 +105,8 @@ func NewTimescaleClient(ctx context.Context, connString string, opts ...Timescal
 	}
 
 	timescaleClient.Pool = pool
-	timescaleClient.getColumnTemplate = tmpl
+	timescaleClient.getColumnTemplate = getColumnTmpl
+	timescaleClient.getColumnLastTemplate = getColumnLastTmpl
 
 	return timescaleClient, nil
 }
@@ -97,16 +115,16 @@ func (c *TimescaleClient) Close() {
 	c.Pool.Close()
 }
 
-func (c *TimescaleClient) GetColumn(ctx context.Context, tp TemplateParameters) ([]WeatherRow, error) {
+func (c *TimescaleClient) GetColumn(ctx context.Context, tp GetColumnTemplateParameters) ([]GetColumnResponse, error) {
 	if c.Dfly != nil {
 		res, err := c.Dfly.GetClient().Get(ctx, fmt.Sprintf("%s-%s", c.Dfly.KeyPrefix, tp.Hash())).Result()
 		if err == nil {
-			var weatherRows []WeatherRow
-			err := json.Unmarshal([]byte(res), &weatherRows)
+			var getColumnResponses []GetColumnResponse
+			err := json.Unmarshal([]byte(res), &getColumnResponses)
 			if err != nil {
 				slog.Error("failed to unmarshal from dragonfly", slog.String("error", err.Error()))
 			}
-			return weatherRows, nil
+			return getColumnResponses, nil
 		} else if !errors.Is(err, redis.Nil) {
 			slog.Error("failed to get from dragonfly", slog.String("error", err.Error()))
 		}
@@ -124,30 +142,75 @@ func (c *TimescaleClient) GetColumn(ctx context.Context, tp TemplateParameters) 
 	}
 	defer rows.Close()
 
-	var weatherRows []WeatherRow
+	var getColumnResponses []GetColumnResponse
 
 	for rows.Next() {
-		var row WeatherRow
+		var row GetColumnResponse
 		err := rows.Scan(&row.Time, &row.Avg, &row.Min, &row.Max)
 		if err != nil {
 			slog.Error("failed to scan row", slog.String("error", err.Error()))
 			continue
 		}
 
-		weatherRows = append(weatherRows, row)
+		getColumnResponses = append(getColumnResponses, row)
 	}
 
 	if c.Dfly != nil {
-		weatherRowsJSON, err := json.Marshal(weatherRows)
+		getColumnResponsesJSON, err := json.Marshal(getColumnResponses)
 		if err != nil {
 			slog.Error("failed to marshal to dragonfly", slog.String("error", err.Error()))
 		} else {
-			err := c.Dfly.GetClient().Set(ctx, fmt.Sprintf("%s-%s", c.Dfly.KeyPrefix, tp.Hash()), weatherRowsJSON, c.Dfly.CacheResultsDuration).Err()
+			err := c.Dfly.GetClient().Set(ctx, fmt.Sprintf("%s-%s", c.Dfly.KeyPrefix, tp.Hash()), getColumnResponsesJSON, c.Dfly.CacheResultsDuration).Err()
 			if err != nil {
 				slog.Error("failed to set to dragonfly", slog.String("error", err.Error()))
 			}
 		}
 	}
 
-	return weatherRows, nil
+	return getColumnResponses, nil
+}
+
+func (c *TimescaleClient) GetColumnLast(ctx context.Context, tp GetColumnLastTemplateParameters) (*GetColumnLastResponse, error) {
+	if c.Dfly != nil {
+		res, err := c.Dfly.GetClient().Get(ctx, fmt.Sprintf("%s-%s", c.Dfly.KeyPrefix, tp.Hash())).Result()
+		if err == nil {
+			var getColumnLastResponse GetColumnLastResponse
+			err := json.Unmarshal([]byte(res), &getColumnLastResponse)
+			if err != nil {
+				slog.Error("failed to unmarshal from dragonfly", slog.String("error", err.Error()))
+			}
+			return &getColumnLastResponse, nil
+		} else if !errors.Is(err, redis.Nil) {
+			slog.Error("failed to get from dragonfly", slog.String("error", err.Error()))
+		}
+	}
+
+	query := bytes.NewBuffer(nil)
+	err := c.getColumnLastTemplate.Execute(query, tp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query template: %w", err)
+	}
+
+	row := c.Pool.QueryRow(ctx, query.String())
+
+	var getColumnLastResponse GetColumnLastResponse
+
+	err = row.Scan(&getColumnLastResponse.Time, &getColumnLastResponse.Last)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get %s: %w", tp.ColumnName, err)
+	}
+
+	if c.Dfly != nil {
+		getColumnLastResponseJSON, err := json.Marshal(getColumnLastResponse)
+		if err != nil {
+			slog.Error("failed to marshal to dragonfly", slog.String("error", err.Error()))
+		} else {
+			err := c.Dfly.GetClient().Set(ctx, fmt.Sprintf("%s-%s", c.Dfly.KeyPrefix, tp.Hash()), getColumnLastResponseJSON, c.Dfly.CacheResultsDuration).Err()
+			if err != nil {
+				slog.Error("failed to set to dragonfly", slog.String("error", err.Error()))
+			}
+		}
+	}
+
+	return &getColumnLastResponse, nil
 }

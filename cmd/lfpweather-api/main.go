@@ -83,29 +83,50 @@ func main() {
 	apiRouter := r.PathPrefix("/api").Subrouter()
 	v1Subrouter := apiRouter.PathPrefix("/v1").Subrouter()
 
+	// last data
+	v1Subrouter.HandleFunc("/temperature/last", weatherHandler.GetTemperatureLast).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/humidity/last", weatherHandler.GetHumidityLast).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/pressure/last", weatherHandler.GetPressureLast).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/solar_radiation/last", weatherHandler.GetSolarRadiationLast).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/wind_speed/last", weatherHandler.GetWindSpeedHighLast10MinLast).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/24h_rain/last", weatherHandler.GetRainLast24hLast).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/uv_index/last", weatherHandler.GetUVIndexLast).Methods(http.MethodGet)
+
 	//12h data
 	v1Subrouter.HandleFunc("/temperature/12h", weatherHandler.GetTemperature12h).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/humidity/12h", weatherHandler.GetHumidity12h).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/pressure/12h", weatherHandler.GetPressure12h).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/solar_radiation/12h", weatherHandler.GetSolarRadiation12h).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/wind_speed/12h", weatherHandler.GetWindSpeedLast12h).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/rain_rate/12h", weatherHandler.GetRainRateLast12h).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/uv_index/12h", weatherHandler.GetUVIndex12h).Methods(http.MethodGet)
 
 	// 24h data
 	v1Subrouter.HandleFunc("/temperature/24h", weatherHandler.GetTemperature24h).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/humidity/24h", weatherHandler.GetHumidity24h).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/pressure/24h", weatherHandler.GetPressure24h).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/solar_radiation/24h", weatherHandler.GetSolarRadiation24h).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/wind_speed/24h", weatherHandler.GetWindSpeedLast24h).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/rain_rate/24h", weatherHandler.GetRainRateLast24h).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/uv_index/24h", weatherHandler.GetUVIndex24h).Methods(http.MethodGet)
 
 	// 7d data
 	v1Subrouter.HandleFunc("/temperature/7d", weatherHandler.GetTemperature7d).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/humidity/7d", weatherHandler.GetHumidity7d).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/pressure/7d", weatherHandler.GetPressure7d).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/solar_radiation/7d", weatherHandler.GetSolarRadiation7d).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/wind_speed/7d", weatherHandler.GetWindSpeedLast7d).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/rain_rate/7d", weatherHandler.GetRainRateLast7d).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/uv_index/7d", weatherHandler.GetUVIndex7d).Methods(http.MethodGet)
 
 	// 30d data
 	v1Subrouter.HandleFunc("/temperature/30d", weatherHandler.GetTemperature30d).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/humidity/30d", weatherHandler.GetHumidity30d).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/pressure/30d", weatherHandler.GetPressure30d).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/solar_radiation/30d", weatherHandler.GetSolarRadiation30d).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/wind_speed/30d", weatherHandler.GetWindSpeedLast30d).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/rain_rate/30d", weatherHandler.GetRainRateLast30d).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/uv_index/30d", weatherHandler.GetUVIndex30d).Methods(http.MethodGet)
 
 	if c.AuthenticationEnabled {
 		authenticationMiddleware := middleware.NewAuthenticationMiddlewareClient(

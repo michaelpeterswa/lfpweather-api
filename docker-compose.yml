@@ -11,7 +11,7 @@ services:
       # logging
       LOG_LEVEL: "info"
 
-      TIMESCALE_CONN_STRING: "" # yamllint disable-line rule:line-length
+      TIMESCALE_CONN_STRING: "postgres://postgres:timekeeper@10.0.0.10:5432/postgres?sslmode=disable" # yamllint disable-line rule:line-length
 
       AUTHENTICATION_ENABLED: "true"
       API_KEYS: "f791709e0fc2a4eabfdca42a50d905a8"

@@ -4,9 +4,12 @@ SELECT
     MIN({{.ColumnName}}),
     MAX({{.ColumnName}})
 FROM
-    sensors.vantagepro2plus
+    sensors.{{.TableName}}
 WHERE
     "time" > NOW() - INTERVAL '{{.LookbackInterval}}'
+    {{if or (eq .TableName "airgradient") (eq .TableName "airgradient_aqi") }}
+        AND serial_number in ('84fce6070dd4')
+    {{end}}
 GROUP BY
     1
 ORDER BY

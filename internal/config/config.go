@@ -27,7 +27,7 @@ type Config struct {
 
 	TracingEnabled    bool    `env:"TRACING_ENABLED" envDefault:"false"`
 	TracingSampleRate float64 `env:"TRACING_SAMPLERATE" envDefault:"0.01"`
-	TracingService    string  `env:"TRACING_SERVICE" envDefault:"katalog-agent"`
+	TracingService    string  `env:"TRACING_SERVICE" envDefault:"lfpweather-api"`
 	TracingVersion    string  `env:"TRACING_VERSION"`
 }
 

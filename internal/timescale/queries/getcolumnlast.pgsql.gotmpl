@@ -1,3 +1,6 @@
-SELECT time, {{.ColumnName}} FROM sensors.vantagepro2plus 
+SELECT time, {{.ColumnName}} FROM sensors.{{.TableName}}
+{{if or (eq .TableName "airgradient") (eq .TableName "airgradient_aqi") }}
+    WHERE serial_number in ('84fce6070dd4')
+{{end}}
 ORDER BY time desc
 LIMIT 1

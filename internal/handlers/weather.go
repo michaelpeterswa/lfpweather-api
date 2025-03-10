@@ -23,7 +23,7 @@ func (s *WeatherHandler) Close() {
 }
 
 func (s *WeatherHandler) GetColumnGeneric(w http.ResponseWriter, r *http.Request, tp timescale.GetColumnTemplateParameters) {
-	temperatures, err := s.timescaleClient.GetColumn(r.Context(), tp)
+	values, err := s.timescaleClient.GetColumn(r.Context(), tp)
 	if err != nil {
 		statusCode := http.StatusInternalServerError
 
@@ -51,7 +51,7 @@ func (s *WeatherHandler) GetColumnGeneric(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	res, err := json.Marshal(temperatures)
+	res, err := json.Marshal(values)
 	if err != nil {
 		statusCode := http.StatusInternalServerError
 
@@ -109,156 +109,224 @@ func (s *WeatherHandler) GetColumnGeneric(w http.ResponseWriter, r *http.Request
 	}
 }
 
-func (s *WeatherHandler) GetColumn12h(w http.ResponseWriter, r *http.Request, columnName string) {
+func (s *WeatherHandler) GetColumn12h(w http.ResponseWriter, r *http.Request, columnName string, tableName string) {
 	s.GetColumnGeneric(w, r, timescale.GetColumnTemplateParameters{
 		ColumnName:       columnName,
 		LookbackInterval: "12h",
 		TimeBucket:       "30m",
+		TableName:        tableName,
 	})
 }
 
-func (s *WeatherHandler) GetColumn24h(w http.ResponseWriter, r *http.Request, columnName string) {
+func (s *WeatherHandler) GetColumn24h(w http.ResponseWriter, r *http.Request, columnName string, tableName string) {
 	s.GetColumnGeneric(w, r, timescale.GetColumnTemplateParameters{
 		ColumnName:       columnName,
 		LookbackInterval: "24h",
 		TimeBucket:       "1h",
+		TableName:        tableName,
 	})
 }
 
-func (s *WeatherHandler) GetColumn7d(w http.ResponseWriter, r *http.Request, columnName string) {
+func (s *WeatherHandler) GetColumn7d(w http.ResponseWriter, r *http.Request, columnName string, tableName string) {
 	s.GetColumnGeneric(w, r, timescale.GetColumnTemplateParameters{
 		ColumnName:       columnName,
 		LookbackInterval: "7d",
 		TimeBucket:       "6h",
+		TableName:        tableName,
 	})
 }
 
-func (s *WeatherHandler) GetColumn30d(w http.ResponseWriter, r *http.Request, columnName string) {
+func (s *WeatherHandler) GetColumn30d(w http.ResponseWriter, r *http.Request, columnName string, tableName string) {
 	s.GetColumnGeneric(w, r, timescale.GetColumnTemplateParameters{
 		ColumnName:       columnName,
 		LookbackInterval: "30d",
 		TimeBucket:       "1d",
+		TableName:        tableName,
 	})
 }
 
 // 12h
 
 func (s *WeatherHandler) GetTemperature12h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn12h(w, r, "temperature")
+	s.GetColumn12h(w, r, "temperature", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetHumidity12h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn12h(w, r, "humidity")
+	s.GetColumn12h(w, r, "humidity", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetPressure12h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn12h(w, r, "barometer_sea_level")
+	s.GetColumn12h(w, r, "barometer_sea_level", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetSolarRadiation12h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn12h(w, r, "solar_radiation")
+	s.GetColumn12h(w, r, "solar_radiation", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetWindSpeedLast12h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn12h(w, r, "wind_speed_last")
+	s.GetColumn12h(w, r, "wind_speed_last", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetRainRateLast12h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn12h(w, r, "rain_rate_last")
+	s.GetColumn12h(w, r, "rain_rate_last", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetUVIndex12h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn12h(w, r, "uv_index")
+	s.GetColumn12h(w, r, "uv_index", "vantagepro2plus")
+}
+
+func (s *WeatherHandler) GetAQI12h(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn12h(w, r, "aqi", "airgradient_aqi")
+}
+
+func (s *WeatherHandler) GetCo212h(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn12h(w, r, "rco2", "airgradient")
+}
+
+func (s *WeatherHandler) GetNoxIndex12h(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn12h(w, r, "nox_index", "airgradient")
+}
+
+func (s *WeatherHandler) GetTvocIndex12h(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn12h(w, r, "tvoc_index", "airgradient")
 }
 
 // 24h
 
 func (s *WeatherHandler) GetTemperature24h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn24h(w, r, "temperature")
+	s.GetColumn24h(w, r, "temperature", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetHumidity24h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn24h(w, r, "humidity")
+	s.GetColumn24h(w, r, "humidity", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetPressure24h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn24h(w, r, "barometer_sea_level")
+	s.GetColumn24h(w, r, "barometer_sea_level", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetSolarRadiation24h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn24h(w, r, "solar_radiation")
+	s.GetColumn24h(w, r, "solar_radiation", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetWindSpeedLast24h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn24h(w, r, "wind_speed_last")
+	s.GetColumn24h(w, r, "wind_speed_last", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetRainRateLast24h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn24h(w, r, "rain_rate_last")
+	s.GetColumn24h(w, r, "rain_rate_last", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetUVIndex24h(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn24h(w, r, "uv_index")
+	s.GetColumn24h(w, r, "uv_index", "vantagepro2plus")
+}
+
+func (s *WeatherHandler) GetAQI24h(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn24h(w, r, "aqi", "airgradient_aqi")
+}
+
+func (s *WeatherHandler) GetCo224h(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn24h(w, r, "rco2", "airgradient")
+}
+
+func (s *WeatherHandler) GetNoxIndex24h(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn24h(w, r, "nox_index", "airgradient")
+}
+
+func (s *WeatherHandler) GetTvocIndex24h(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn24h(w, r, "tvoc_index", "airgradient")
 }
 
 // 7d
 
 func (s *WeatherHandler) GetTemperature7d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn7d(w, r, "temperature")
+	s.GetColumn7d(w, r, "temperature", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetHumidity7d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn7d(w, r, "humidity")
+	s.GetColumn7d(w, r, "humidity", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetPressure7d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn7d(w, r, "barometer_sea_level")
+	s.GetColumn7d(w, r, "barometer_sea_level", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetSolarRadiation7d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn7d(w, r, "solar_radiation")
+	s.GetColumn7d(w, r, "solar_radiation", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetWindSpeedLast7d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn7d(w, r, "wind_speed_last")
+	s.GetColumn7d(w, r, "wind_speed_last", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetRainRateLast7d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn7d(w, r, "rain_rate_last")
+	s.GetColumn7d(w, r, "rain_rate_last", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetUVIndex7d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn7d(w, r, "uv_index")
+	s.GetColumn7d(w, r, "uv_index", "vantagepro2plus")
+}
+
+func (s *WeatherHandler) GetAQI7d(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn7d(w, r, "aqi", "airgradient_aqi")
+}
+
+func (s *WeatherHandler) GetCo27d(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn7d(w, r, "rco2", "airgradient")
+}
+
+func (s *WeatherHandler) GetNoxIndex7d(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn7d(w, r, "nox_index", "airgradient")
+}
+
+func (s *WeatherHandler) GetTvocIndex7d(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn7d(w, r, "tvoc_index", "airgradient")
 }
 
 // 30d
 
 func (s *WeatherHandler) GetTemperature30d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn30d(w, r, "temperature")
+	s.GetColumn30d(w, r, "temperature", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetHumidity30d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn30d(w, r, "humidity")
+	s.GetColumn30d(w, r, "humidity", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetPressure30d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn30d(w, r, "barometer_sea_level")
+	s.GetColumn30d(w, r, "barometer_sea_level", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetSolarRadiation30d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn30d(w, r, "solar_radiation")
+	s.GetColumn30d(w, r, "solar_radiation", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetWindSpeedLast30d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn30d(w, r, "wind_speed_last")
+	s.GetColumn30d(w, r, "wind_speed_last", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetRainRateLast30d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn30d(w, r, "rain_rate_last")
+	s.GetColumn30d(w, r, "rain_rate_last", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetUVIndex30d(w http.ResponseWriter, r *http.Request) {
-	s.GetColumn30d(w, r, "uv_index")
+	s.GetColumn30d(w, r, "uv_index", "vantagepro2plus")
+}
+
+func (s *WeatherHandler) GetAQI30d(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn30d(w, r, "aqi", "airgradient_aqi")
+}
+
+func (s *WeatherHandler) GetCo230d(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn30d(w, r, "rco2", "airgradient")
+}
+
+func (s *WeatherHandler) GetNoxIndex30d(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn30d(w, r, "nox_index", "airgradient")
+}
+
+func (s *WeatherHandler) GetTvocIndex30d(w http.ResponseWriter, r *http.Request) {
+	s.GetColumn30d(w, r, "tvoc_index", "airgradient")
 }
 
 // -------------
@@ -350,36 +418,53 @@ func (s *WeatherHandler) GetColumnLastGeneric(w http.ResponseWriter, r *http.Req
 	}
 }
 
-func (s *WeatherHandler) GetColumnLast(w http.ResponseWriter, r *http.Request, columnName string) {
+func (s *WeatherHandler) GetColumnLast(w http.ResponseWriter, r *http.Request, columnName string, tableName string) {
 	s.GetColumnLastGeneric(w, r, timescale.GetColumnLastTemplateParameters{
 		ColumnName: columnName,
+		TableName:  tableName,
 	})
 }
 
 func (s *WeatherHandler) GetTemperatureLast(w http.ResponseWriter, r *http.Request) {
-	s.GetColumnLast(w, r, "temperature")
+	s.GetColumnLast(w, r, "temperature", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetHumidityLast(w http.ResponseWriter, r *http.Request) {
-	s.GetColumnLast(w, r, "humidity")
+	s.GetColumnLast(w, r, "humidity", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetPressureLast(w http.ResponseWriter, r *http.Request) {
-	s.GetColumnLast(w, r, "barometer_sea_level")
+	s.GetColumnLast(w, r, "barometer_sea_level", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetSolarRadiationLast(w http.ResponseWriter, r *http.Request) {
-	s.GetColumnLast(w, r, "solar_radiation")
+	s.GetColumnLast(w, r, "solar_radiation", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetWindSpeedHighLast10MinLast(w http.ResponseWriter, r *http.Request) {
-	s.GetColumnLast(w, r, "wind_speed_high_last_10_min")
+	s.GetColumnLast(w, r, "wind_speed_high_last_10_min", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetRainLast24hLast(w http.ResponseWriter, r *http.Request) {
-	s.GetColumnLast(w, r, "rain_last_24_hour")
+	s.GetColumnLast(w, r, "rain_last_24_hour", "vantagepro2plus")
 }
 
 func (s *WeatherHandler) GetUVIndexLast(w http.ResponseWriter, r *http.Request) {
-	s.GetColumnLast(w, r, "uv_index")
+	s.GetColumnLast(w, r, "uv_index", "vantagepro2plus")
+}
+
+func (s *WeatherHandler) GetAQILast(w http.ResponseWriter, r *http.Request) {
+	s.GetColumnLast(w, r, "aqi", "airgradient_aqi")
+}
+
+func (s *WeatherHandler) GetCo2Last(w http.ResponseWriter, r *http.Request) {
+	s.GetColumnLast(w, r, "rco2", "airgradient")
+}
+
+func (s *WeatherHandler) GetNoxIndexLast(w http.ResponseWriter, r *http.Request) {
+	s.GetColumnLast(w, r, "nox_index", "airgradient")
+}
+
+func (s *WeatherHandler) GetTvocIndexLast(w http.ResponseWriter, r *http.Request) {
+	s.GetColumnLast(w, r, "tvoc_index", "airgradient")
 }

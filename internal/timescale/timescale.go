@@ -38,17 +38,26 @@ type GetColumnTemplateParameters struct {
 	ColumnName       string
 	TimeBucket       string
 	LookbackInterval string
+	TableName        string
+}
+
+func (t *GetColumnTemplateParameters) String() string {
+	return fmt.Sprintf("%s-%s-%s-%s",
+		strings.ReplaceAll(t.ColumnName, " ", ""),
+		strings.ReplaceAll(t.TimeBucket, " ", ""),
+		strings.ReplaceAll(t.LookbackInterval, " ", ""),
+		strings.ReplaceAll(t.TableName, " ", ""))
 }
 
 type GetColumnLastTemplateParameters struct {
 	ColumnName string
+	TableName  string
 }
 
-func (t *GetColumnTemplateParameters) String() string {
-	return fmt.Sprintf("%s-%s-%s",
+func (t *GetColumnLastTemplateParameters) String() string {
+	return fmt.Sprintf("%s-%s",
 		strings.ReplaceAll(t.ColumnName, " ", ""),
-		strings.ReplaceAll(t.TimeBucket, " ", ""),
-		strings.ReplaceAll(t.LookbackInterval, " ", ""))
+		strings.ReplaceAll(t.TableName, " ", ""))
 }
 
 func (t *GetColumnTemplateParameters) Hash() string {
@@ -56,7 +65,7 @@ func (t *GetColumnTemplateParameters) Hash() string {
 }
 
 func (t *GetColumnLastTemplateParameters) Hash() string {
-	return strconv.FormatUint(xxhash.Sum64String(t.ColumnName), 16)
+	return strconv.FormatUint(xxhash.Sum64String(t.String()), 16)
 }
 
 type TimescaleClientOption func(*TimescaleClient)
@@ -136,6 +145,8 @@ func (c *TimescaleClient) GetColumn(ctx context.Context, tp GetColumnTemplatePar
 		return nil, fmt.Errorf("failed to execute query template: %w", err)
 	}
 
+	slog.Debug("query", slog.String("query", query.String()))
+
 	rows, err := c.Pool.Query(ctx, query.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get %s for the last %s: %w", tp.ColumnName, tp.LookbackInterval, err)
@@ -190,6 +201,8 @@ func (c *TimescaleClient) GetColumnLast(ctx context.Context, tp GetColumnLastTem
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query template: %w", err)
 	}
+
+	slog.Debug("query", slog.String("query", query.String()))
 
 	row := c.Pool.QueryRow(ctx, query.String())
 

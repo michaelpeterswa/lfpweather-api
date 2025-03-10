@@ -135,9 +135,9 @@ func main() {
 	v1Subrouter.HandleFunc("/rain_rate/7d", weatherHandler.GetRainRateLast7d).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/uv_index/7d", weatherHandler.GetUVIndex7d).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/aqi/7d", weatherHandler.GetAQI7d).Methods(http.MethodGet)
-	v1Subrouter.HandleFunc("/co2/24h", weatherHandler.GetCo224h).Methods(http.MethodGet)
-	v1Subrouter.HandleFunc("/nox_index/24h", weatherHandler.GetNoxIndex24h).Methods(http.MethodGet)
-	v1Subrouter.HandleFunc("/tvoc_index/24h", weatherHandler.GetTvocIndex24h).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/co2/7d", weatherHandler.GetCo224h).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/nox_index/7d", weatherHandler.GetNoxIndex24h).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/tvoc_index/7d", weatherHandler.GetTvocIndex24h).Methods(http.MethodGet)
 
 	// 30d data
 	v1Subrouter.HandleFunc("/temperature/30d", weatherHandler.GetTemperature30d).Methods(http.MethodGet)

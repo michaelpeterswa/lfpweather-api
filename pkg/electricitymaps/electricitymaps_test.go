@@ -22,7 +22,7 @@ func TestGetZones(t *testing.T) {
 			mockServer: func() *httptest.Server {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(`{"zone1": {"countryName": "Country1", "zoneName": "Zone1", "displayName": "Display1", "access": "Access1"}}`))
+					_, _ = w.Write([]byte(`{"zone1": {"countryName": "Country1", "zoneName": "Zone1", "displayName": "Display1", "access": "Access1"}}`))
 				}))
 			},
 			expectErr: false,
@@ -43,7 +43,7 @@ func TestGetZones(t *testing.T) {
 			mockServer: func() *httptest.Server {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(`{
+					_, _ = w.Write([]byte(`{
 	"AD": {
 		"zoneName": "Andorra"
 	},
@@ -1428,7 +1428,7 @@ func TestGetPowerBreakdownLatest(t *testing.T) {
 			mockServer: func() *httptest.Server {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(`{
+					_, _ = w.Write([]byte(`{
 						"zone": "US-NW-SCL",
 						"datetime": "2025-06-01T12:00:00Z",
 						"powerConsumptionBreakdown": {"solar": 100, "wind": 200},

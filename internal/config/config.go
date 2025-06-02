@@ -22,6 +22,11 @@ type Config struct {
 	AuthenticationEnabled bool     `env:"AUTHENTICATION_ENABLED" envDefault:"false"`
 	APIKeys               []string `env:"API_KEYS"`
 
+	// electricitymaps
+	ElectricityMapsAPIKey        string        `env:"ELECTRICITYMAPS_API_KEY,required"`
+	ElectricityMapsBaseURL       string        `env:"ELECTRICITYMAPS_BASE_URL"`
+	ElectricityMapsClientTimeout time.Duration `env:"ELECTRICITYMAPS_CLIENT_TIMEOUT" envDefault:"5s"`
+
 	MetricsEnabled bool `env:"METRICS_ENABLED" envDefault:"true"`
 	MetricsPort    int  `env:"METRICS_PORT" envDefault:"8081"`
 

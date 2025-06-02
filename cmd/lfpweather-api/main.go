@@ -16,6 +16,7 @@ import (
 	"github.com/michaelpeterswa/lfpweather-api/internal/logging"
 	"github.com/michaelpeterswa/lfpweather-api/internal/middleware"
 	"github.com/michaelpeterswa/lfpweather-api/internal/timescale"
+	"github.com/michaelpeterswa/lfpweather-api/pkg/electricitymaps"
 )
 
 func main() {
@@ -81,6 +82,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	var electricityMapsOpts []electricitymaps.ElectricityMapsClientOption
+	if c.ElectricityMapsBaseURL != "" {
+		electricityMapsOpts = append(electricityMapsOpts, electricitymaps.WithBaseUrl(c.ElectricityMapsBaseURL))
+	}
+	electricityMapsOpts = append(electricityMapsOpts, electricitymaps.WithHttpClient(&http.Client{
+		Timeout: c.ElectricityMapsClientTimeout,
+	}))
+	electricityMapsOpts = append(electricityMapsOpts, electricitymaps.WithDragonflyClient(dragonflyClient))
+
+	electricityMapsClient := electricitymaps.NewElectricityMapsClient(
+		c.ElectricityMapsAPIKey,
+		electricityMapsOpts...,
+	)
+
+	electricityMapsHandler := handlers.NewElectricityMapsHandler(electricityMapsClient)
+
 	weatherHandler := handlers.NewWeatherHandler(timescaleClient)
 
 	r := mux.NewRouter()
@@ -99,6 +116,8 @@ func main() {
 	v1Subrouter.HandleFunc("/co2/last", weatherHandler.GetCo2Last).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/nox_index/last", weatherHandler.GetNoxIndexLast).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/tvoc_index/last", weatherHandler.GetTvocIndexLast).Methods(http.MethodGet)
+	// electricitymaps
+	v1Subrouter.HandleFunc("/electricitymaps/power_breakdown/latest", electricityMapsHandler.GetPowerBreakdownLatest).Methods(http.MethodGet)
 
 	//12h data
 	v1Subrouter.HandleFunc("/temperature/12h", weatherHandler.GetTemperature12h).Methods(http.MethodGet)

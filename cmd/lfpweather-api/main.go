@@ -100,6 +100,8 @@ func main() {
 
 	weatherHandler := handlers.NewWeatherHandler(timescaleClient)
 
+	birdnetHandler := handlers.NewBirdnetHandler(timescaleClient)
+
 	r := mux.NewRouter()
 	apiRouter := r.PathPrefix("/api").Subrouter()
 	v1Subrouter := apiRouter.PathPrefix("/v1").Subrouter()
@@ -144,6 +146,7 @@ func main() {
 	v1Subrouter.HandleFunc("/co2/24h", weatherHandler.GetCo224h).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/nox_index/24h", weatherHandler.GetNoxIndex24h).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/tvoc_index/24h", weatherHandler.GetTvocIndex24h).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/birdnet/24h", birdnetHandler.GetBirdCount24h).Methods(http.MethodGet)
 
 	// 7d data
 	v1Subrouter.HandleFunc("/temperature/7d", weatherHandler.GetTemperature7d).Methods(http.MethodGet)

@@ -26,6 +26,7 @@ type TimescaleClient struct {
 	Dfly                  *dragonfly.DragonflyClient
 	getColumnTemplate     *template.Template
 	getColumnLastTemplate *template.Template
+	getBirdnetTemplate    *template.Template
 }
 
 //go:embed queries/getcolumn.pgsql.gotmpl
@@ -81,12 +82,17 @@ func NewTimescaleClient(ctx context.Context, connString string, opts ...Timescal
 
 	getColumnTmpl, err := template.New("getColumn").Parse(getColumnTemplate)
 	if err != nil {
-		return nil, fmt.Errorf("parse query template: %w", err)
+		return nil, fmt.Errorf("parse getColumn template: %w", err)
 	}
 
 	getColumnLastTmpl, err := template.New("getColumnLast").Parse(getColumnLastTemplate)
 	if err != nil {
-		return nil, fmt.Errorf("parse query template: %w", err)
+		return nil, fmt.Errorf("parse getColumnLast template: %w", err)
+	}
+
+	getBirdnetTemplate, err := template.New("getBirdnet").Parse(getBirdnetTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("parse getBirdnet template: %w", err)
 	}
 
 	cfg, err := pgxpool.ParseConfig(connString)
@@ -116,6 +122,7 @@ func NewTimescaleClient(ctx context.Context, connString string, opts ...Timescal
 	timescaleClient.Pool = pool
 	timescaleClient.getColumnTemplate = getColumnTmpl
 	timescaleClient.getColumnLastTemplate = getColumnLastTmpl
+	timescaleClient.getBirdnetTemplate = getBirdnetTemplate
 
 	return timescaleClient, nil
 }

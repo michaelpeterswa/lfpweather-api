@@ -19,6 +19,12 @@ type Config struct {
 	TimescaleConnString string `env:"TIMESCALE_CONN_STRING,required"`
 	Port                int    `env:"PORT" envDefault:"8080"`
 
+	// structured query endpoint (/api/v1/query) guardrails
+	QueryMaxRange     time.Duration `env:"QUERY_MAX_RANGE" envDefault:"43800h"` // ~5y
+	QueryTargetPoints int           `env:"QUERY_TARGET_POINTS" envDefault:"750"`
+	QueryMaxPoints    int           `env:"QUERY_MAX_POINTS" envDefault:"5000"`
+	QueryTimeout      time.Duration `env:"QUERY_TIMEOUT" envDefault:"10s"`
+
 	AuthenticationEnabled bool     `env:"AUTHENTICATION_ENABLED" envDefault:"false"`
 	APIKeys               []string `env:"API_KEYS"`
 

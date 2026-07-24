@@ -13,15 +13,32 @@ import (
 
 type QueryHandler struct {
 	timescaleClient *timescale.TimescaleClient
+	catalog         timescale.Catalog
 	limits          timescale.QueryLimits
 	timeout         time.Duration
 }
 
-func NewQueryHandler(client *timescale.TimescaleClient, limits timescale.QueryLimits, timeout time.Duration) *QueryHandler {
+func NewQueryHandler(client *timescale.TimescaleClient, catalog timescale.Catalog, limits timescale.QueryLimits, timeout time.Duration) *QueryHandler {
 	return &QueryHandler{
 		timescaleClient: client,
+		catalog:         catalog,
 		limits:          limits,
 		timeout:         timeout,
+	}
+}
+
+// GetFields handles GET /api/v1/query/fields: the discovery catalog of every
+// queryable table, its columns and types, and the friendly aliases.
+func (h *QueryHandler) GetFields(w http.ResponseWriter, r *http.Request) {
+	res, err := json.Marshal(h.catalog.Describe())
+	if err != nil {
+		writeProblem(w, r, http.StatusInternalServerError, "failed to marshal fields", err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write(res); err != nil {
+		slog.Error("failed to write response", slog.String("error", err.Error()))
 	}
 }
 
@@ -36,7 +53,7 @@ func (h *QueryHandler) PostQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	plan, err := timescale.PlanQuery(req, h.limits, time.Now().UTC())
+	plan, err := timescale.PlanQuery(req, h.limits, h.catalog, time.Now().UTC())
 	if err != nil {
 		var ve *timescale.QueryValidationError
 		if errors.As(err, &ve) {

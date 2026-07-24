@@ -102,7 +102,13 @@ func main() {
 
 	birdnetHandler := handlers.NewBirdnetHandler(timescaleClient)
 
-	queryHandler := handlers.NewQueryHandler(timescaleClient, timescale.QueryLimits{
+	catalog, err := timescaleClient.IntrospectCatalog(ctx)
+	if err != nil {
+		slog.Error("could not introspect sensor catalog", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	queryHandler := handlers.NewQueryHandler(timescaleClient, catalog, timescale.QueryLimits{
 		MaxRange:     c.QueryMaxRange,
 		TargetPoints: c.QueryTargetPoints,
 		MaxPoints:    c.QueryMaxPoints,
@@ -156,6 +162,7 @@ func main() {
 
 	// structured query endpoint
 	v1Subrouter.HandleFunc("/query", queryHandler.PostQuery).Methods(http.MethodPost)
+	v1Subrouter.HandleFunc("/query/fields", queryHandler.GetFields).Methods(http.MethodGet)
 
 	// 7d data
 	v1Subrouter.HandleFunc("/temperature/7d", weatherHandler.GetTemperature7d).Methods(http.MethodGet)

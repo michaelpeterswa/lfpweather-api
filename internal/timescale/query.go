@@ -29,42 +29,6 @@ const (
 	MetricTypeCount MetricType = "count"
 )
 
-// airgradientSerial is the single AirGradient unit whose readings are exposed.
-const airgradientSerial = "84fce6070dd4"
-
-// metricDef maps a public metric name onto a concrete source relation + column.
-// Table is the source relation under the sensors schema; swapping it for a
-// TimescaleDB continuous aggregate later requires no change to the API contract.
-type metricDef struct {
-	Table          string
-	Column         string // empty for count metrics
-	Type           MetricType
-	SerialFiltered bool
-}
-
-// metricRegistry is the allowlist. Only names present here can be queried, and
-// every Table/Column value is a server-controlled constant that reaches SQL via
-// text/template — no caller input is ever interpolated into the query text.
-var metricRegistry = map[string]metricDef{
-	// vantagepro2plus weather station
-	"temperature":     {Table: "vantagepro2plus", Column: "temperature", Type: MetricTypeGauge},
-	"humidity":        {Table: "vantagepro2plus", Column: "humidity", Type: MetricTypeGauge},
-	"pressure":        {Table: "vantagepro2plus", Column: "barometer_sea_level", Type: MetricTypeGauge},
-	"solar_radiation": {Table: "vantagepro2plus", Column: "solar_radiation", Type: MetricTypeGauge},
-	"wind_speed":      {Table: "vantagepro2plus", Column: "wind_speed_last", Type: MetricTypeGauge},
-	"wind_gust":       {Table: "vantagepro2plus", Column: "wind_speed_high_last_10_min", Type: MetricTypeGauge},
-	"rain_rate":       {Table: "vantagepro2plus", Column: "rain_rate_last", Type: MetricTypeGauge},
-	"rain_24h":        {Table: "vantagepro2plus", Column: "rain_last_24_hour", Type: MetricTypeGauge},
-	"uv_index":        {Table: "vantagepro2plus", Column: "uv_index", Type: MetricTypeGauge},
-	// airgradient air quality
-	"aqi":        {Table: "airgradient_aqi", Column: "aqi", Type: MetricTypeGauge, SerialFiltered: true},
-	"co2":        {Table: "airgradient", Column: "rco2", Type: MetricTypeGauge, SerialFiltered: true},
-	"nox_index":  {Table: "airgradient", Column: "nox_index", Type: MetricTypeGauge, SerialFiltered: true},
-	"tvoc_index": {Table: "airgradient", Column: "tvoc_index", Type: MetricTypeGauge, SerialFiltered: true},
-	// birdnet acoustic detections
-	"birdnet": {Table: "birdnet", Type: MetricTypeCount},
-}
-
 var (
 	allowedGaugeAggs = map[string]bool{
 		"avg": true, "min": true, "max": true, "count": true, "first": true, "last": true,
@@ -216,10 +180,10 @@ func verr(format string, a ...any) error {
 
 // PlanQuery validates a request against the allowlists and limits and resolves
 // the concrete window + bucket. It performs no I/O and is safe to unit test.
-func PlanQuery(req QueryRequest, limits QueryLimits, now time.Time) (*QueryPlan, error) {
-	def, ok := metricRegistry[req.Metric]
-	if !ok {
-		return nil, verr("unknown metric %q", req.Metric)
+func PlanQuery(req QueryRequest, limits QueryLimits, catalog Catalog, now time.Time) (*QueryPlan, error) {
+	def, err := resolveMetric(req.Metric, catalog)
+	if err != nil {
+		return nil, err
 	}
 
 	start, end, rangeKey, err := resolveWindow(req, limits, now)

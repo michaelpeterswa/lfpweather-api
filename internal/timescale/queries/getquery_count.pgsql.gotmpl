@@ -1,0 +1,14 @@
+SELECT
+    time_bucket($1::interval, "time") AS bucket,
+    {{if .GroupBy}}common_name,{{end}}
+    COUNT(*) AS count
+FROM
+    sensors.{{.Table}}
+WHERE
+    "time" >= $2
+    AND "time" < $3
+    {{if .SerialFiltered}}AND serial_number IN ('{{.Serial}}'){{end}}
+GROUP BY
+    bucket{{if .GroupBy}}, common_name{{end}}
+ORDER BY
+    bucket{{if .GroupBy}}, count DESC{{end}}

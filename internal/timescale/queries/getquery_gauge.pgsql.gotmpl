@@ -1,0 +1,18 @@
+SELECT
+    time_bucket($1::interval, "time") AS bucket,
+    AVG({{.Column}})::float8 AS avg,
+    MIN({{.Column}})::float8 AS min,
+    MAX({{.Column}})::float8 AS max,
+    COUNT({{.Column}}) AS count,
+    first({{.Column}}, "time")::float8 AS first,
+    last({{.Column}}, "time")::float8 AS last
+FROM
+    sensors.{{.Table}}
+WHERE
+    "time" >= $2
+    AND "time" < $3
+    {{if .SerialFiltered}}AND serial_number IN ('{{.Serial}}'){{end}}
+GROUP BY
+    bucket
+ORDER BY
+    bucket

@@ -102,6 +102,18 @@ func main() {
 
 	birdnetHandler := handlers.NewBirdnetHandler(timescaleClient)
 
+	catalog, err := timescaleClient.IntrospectCatalog(ctx)
+	if err != nil {
+		slog.Error("could not introspect sensor catalog", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	queryHandler := handlers.NewQueryHandler(timescaleClient, catalog, timescale.QueryLimits{
+		MaxRange:     c.QueryMaxRange,
+		TargetPoints: c.QueryTargetPoints,
+		MaxPoints:    c.QueryMaxPoints,
+	}, c.QueryTimeout)
+
 	r := mux.NewRouter()
 	apiRouter := r.PathPrefix("/api").Subrouter()
 	v1Subrouter := apiRouter.PathPrefix("/v1").Subrouter()
@@ -147,6 +159,10 @@ func main() {
 	v1Subrouter.HandleFunc("/nox_index/24h", weatherHandler.GetNoxIndex24h).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/tvoc_index/24h", weatherHandler.GetTvocIndex24h).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/birdnet/24h", birdnetHandler.GetBirdCount24h).Methods(http.MethodGet)
+
+	// structured query endpoint
+	v1Subrouter.HandleFunc("/query", queryHandler.PostQuery).Methods(http.MethodPost)
+	v1Subrouter.HandleFunc("/query/fields", queryHandler.GetFields).Methods(http.MethodGet)
 
 	// 7d data
 	v1Subrouter.HandleFunc("/temperature/7d", weatherHandler.GetTemperature7d).Methods(http.MethodGet)

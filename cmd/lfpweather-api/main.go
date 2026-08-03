@@ -102,6 +102,8 @@ func main() {
 
 	birdnetHandler := handlers.NewBirdnetHandler(timescaleClient)
 
+	fireDangerHandler := handlers.NewFireDangerHandler(timescaleClient)
+
 	catalog, err := timescaleClient.IntrospectCatalog(ctx)
 	if err != nil {
 		slog.Error("could not introspect sensor catalog", slog.String("error", err.Error()))
@@ -163,6 +165,9 @@ func main() {
 	// structured query endpoint
 	v1Subrouter.HandleFunc("/query", queryHandler.PostQuery).Methods(http.MethodPost)
 	v1Subrouter.HandleFunc("/query/fields", queryHandler.GetFields).Methods(http.MethodGet)
+
+	// fire weather
+	v1Subrouter.HandleFunc("/fire_danger/summary", fireDangerHandler.GetSummary).Methods(http.MethodGet)
 
 	// 7d data
 	v1Subrouter.HandleFunc("/temperature/7d", weatherHandler.GetTemperature7d).Methods(http.MethodGet)

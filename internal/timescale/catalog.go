@@ -52,6 +52,13 @@ var tableRegistry = map[string]tableDef{
 	// current conditions gets week-old numbers with no indication they are old.
 	"renogychargecontroller": {Type: MetricTypeGauge},
 	"birdnet":                {Type: MetricTypeCount},
+	// NFDRS 2016 fire danger. One station and one fuel model (Y) today, so the
+	// bucket average is the value; a second station or fuel model would blend
+	// rows and need the serial-style filtering airgradient uses. The generic
+	// gauge path here does NOT filter the spin-up rows, so trend windows should
+	// stay recent enough to skip the late-2024 warm-up; the reader-facing
+	// classification at /api/v1/fire_danger/summary filters NOT spinup itself.
+	"fire_danger": {Type: MetricTypeGauge},
 }
 
 // aliasRegistry gives friendly names to the most commonly queried columns so
@@ -81,6 +88,16 @@ var aliasRegistry = map[string]struct{ Table, Column string }{
 	"battery_soc":       {"victron_battery_monitor", "state_of_charge"},
 	"pack_voltage":      {"victron_battery_monitor", "battery_voltage"},
 	"battery_current":   {"victron_battery_monitor", "battery_current"},
+
+	// Fire weather (NFDRS 2016). ERC is the primary danger carrier; the rest are
+	// the supporting indices. Dead and live fuel moisture columns are reachable
+	// via a "fire_danger.<column>" reference.
+	"erc":                {"fire_danger", "energy_release_component"},
+	"burning_index":      {"fire_danger", "burning_index"},
+	"spread_component":   {"fire_danger", "spread_component"},
+	"ignition_component": {"fire_danger", "ignition_component"},
+	"kbdi":               {"fire_danger", "kbdi"},
+	"gsi":                {"fire_danger", "gsi"},
 }
 
 // numericTypes are the information_schema data types a gauge aggregation can be

@@ -29,11 +29,27 @@ type tableDef struct {
 
 // tableRegistry is the table allowlist. A query may only ever touch a table
 // named here, and only its introspected columns.
+//
+// A gauge query averages every row in a bucket, so a table holding more than
+// one device needs care. airgradient is filtered to a single serial. litime is
+// NOT filtered and holds one row per battery, which makes litime.total_voltage
+// the average of the pack's two batteries rather than the pack voltage -- half
+// the real number on a series string. Pack-level values belong to
+// victron_battery_monitor, which measures the pack directly.
+//
+// victron and victron_battery_monitor each hold exactly one device today, so
+// the average is the value. A second charger or shunt would need the same
+// filtering airgradient uses.
 var tableRegistry = map[string]tableDef{
-	"vantagepro2plus":        {Type: MetricTypeGauge},
-	"airgradient":            {Type: MetricTypeGauge, SerialFiltered: true},
-	"airgradient_aqi":        {Type: MetricTypeGauge, SerialFiltered: true},
-	"litime":                 {Type: MetricTypeGauge},
+	"vantagepro2plus":         {Type: MetricTypeGauge},
+	"airgradient":             {Type: MetricTypeGauge, SerialFiltered: true},
+	"airgradient_aqi":         {Type: MetricTypeGauge, SerialFiltered: true},
+	"litime":                  {Type: MetricTypeGauge},
+	"victron":                 {Type: MetricTypeGauge},
+	"victron_battery_monitor": {Type: MetricTypeGauge},
+	// Retained for its history only. The Renogy controller was replaced by the
+	// Victron MPPT and stopped writing on 2026-07-26; anything reading it for
+	// current conditions gets week-old numbers with no indication they are old.
 	"renogychargecontroller": {Type: MetricTypeGauge},
 	"birdnet":                {Type: MetricTypeCount},
 }
@@ -55,6 +71,16 @@ var aliasRegistry = map[string]struct{ Table, Column string }{
 	"co2":             {"airgradient", "rco2"},
 	"nox_index":       {"airgradient", "nox_index"},
 	"tvoc_index":      {"airgradient", "tvoc_index"},
+
+	// Off-grid power. These exist so callers get the correct source without
+	// having to know which of the four power tables measures what: solar comes
+	// from the charger, and everything about the pack comes from the shunt,
+	// which is the only device that measures the pack as a whole.
+	"solar_power":       {"victron", "solar_power"},
+	"solar_yield_today": {"victron", "yield_today"},
+	"battery_soc":       {"victron_battery_monitor", "state_of_charge"},
+	"pack_voltage":      {"victron_battery_monitor", "battery_voltage"},
+	"battery_current":   {"victron_battery_monitor", "battery_current"},
 }
 
 // numericTypes are the information_schema data types a gauge aggregation can be

@@ -34,11 +34,13 @@ var testCatalog = Catalog{Tables: map[string]map[string]ColumnInfo{
 		"humidity":                    num(),
 		"dew_point":                   num(),
 	},
-	"airgradient":            {"rco2": num(), "nox_index": num(), "tvoc_index": num()},
-	"airgradient_aqi":        {"aqi": num()},
-	"litime":                 {"total_voltage": num(), "soc": num(), "soh": text(), "cell_voltages": {DataType: "jsonb"}},
-	"renogychargecontroller": {"battery_voltage": num(), "charging_power": num(), "name": {DataType: "character varying"}},
-	"birdnet":                {"common_name": text()},
+	"airgradient":             {"rco2": num(), "nox_index": num(), "tvoc_index": num()},
+	"airgradient_aqi":         {"aqi": num()},
+	"litime":                  {"total_voltage": num(), "soc": num(), "soh": text(), "cell_voltages": {DataType: "jsonb"}},
+	"renogychargecontroller":  {"battery_voltage": num(), "charging_power": num(), "name": {DataType: "character varying"}},
+	"victron":                 {"solar_power": num(), "yield_today": num(), "charge_state": text()},
+	"victron_battery_monitor": {"state_of_charge": num(), "battery_voltage": num(), "battery_current": num(), "alarm_reason": text()},
+	"birdnet":                 {"common_name": text()},
 }}
 
 func TestPickBucket(t *testing.T) {
@@ -100,6 +102,16 @@ func TestPlanQueryValidation(t *testing.T) {
 		{"dotted into count table", QueryRequest{Metric: "birdnet.common_name", Range: "24h"}, true},
 		{"empty metric", QueryRequest{Range: "24h"}, true},
 		{"litime alias-free numeric", QueryRequest{Metric: "litime.soc", Range: "30d"}, false},
+		// The off-grid aliases. These are the ones the site reads, and a typo
+		// in the registry would otherwise only show up as an empty chart.
+		{"alias solar_power", QueryRequest{Metric: "solar_power", Range: "7d"}, false},
+		{"alias solar_yield_today", QueryRequest{Metric: "solar_yield_today", Range: "7d"}, false},
+		{"alias battery_soc", QueryRequest{Metric: "battery_soc", Range: "7d"}, false},
+		{"alias pack_voltage", QueryRequest{Metric: "pack_voltage", Range: "7d"}, false},
+		{"alias battery_current", QueryRequest{Metric: "battery_current", Range: "7d"}, false},
+		{"dotted victron ref", QueryRequest{Metric: "victron.solar_power", Range: "7d"}, false},
+		{"dotted shunt ref", QueryRequest{Metric: "victron_battery_monitor.battery_current", Range: "7d"}, false},
+		{"shunt non-numeric column", QueryRequest{Metric: "victron_battery_monitor.alarm_reason", Range: "7d"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

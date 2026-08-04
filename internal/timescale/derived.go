@@ -23,14 +23,18 @@ var getZambrettiQuery string
 //go:embed queries/getet0.pgsql
 var getET0Query string
 
+//go:embed queries/getwbgt.pgsql
+var getWBGTQuery string
+
 // gddBaseF is the growing degree day base temperature in degrees Fahrenheit.
 // 50 F is the general agronomic and pest-phenology default.
 const gddBaseF = 50.0
 
-// Site constants for the FAO-56 reference evapotranspiration.
+// Site constants for the FAO-56 reference evapotranspiration and WBGT.
 const (
-	siteLatitudeDeg   = 47.68 // Lake Forest Park, WA
-	siteElevationM    = 33.53 // 110 ft
+	siteLatitudeDeg   = 47.68   // Lake Forest Park, WA
+	siteLongitudeDeg  = -122.28 // Lake Forest Park, WA
+	siteElevationM    = 33.53   // 110 ft
 	anemometerHeightM = 3.0
 )
 
@@ -43,6 +47,7 @@ const (
 	gddCacheKey       = "gdd"
 	zambrettiCacheKey = "zambretti"
 	et0CacheKey       = "et0"
+	wbgtCacheKey      = "wbgt"
 )
 
 // GDDPoint is one day of the growing degree day series.
@@ -85,6 +90,18 @@ type ET0Summary struct {
 	AsOf  string     `json:"as_of"`
 	Total float64    `json:"total"` // accumulated mm year to date
 	Daily []ET0Point `json:"daily"`
+}
+
+// WBGTReading is the payload of GET /api/v1/wbgt.
+type WBGTReading struct {
+	Time           time.Time `json:"time"`
+	WBGTC          float64   `json:"wbgt_c"`
+	WBGTF          float64   `json:"wbgt_f"`
+	Category       string    `json:"category"`
+	Level          int       `json:"level"` // 0 (Low) .. 4 (Extreme)
+	GlobeC         float64   `json:"globe_c"`
+	NaturalWetBulb float64   `json:"natural_wet_bulb_c"`
+	AirC           float64   `json:"air_c"`
 }
 
 // GetGDD returns the year-to-date growing degree day series (base 50 F) using
@@ -272,6 +289,78 @@ func (c *TimescaleClient) GetZambretti(ctx context.Context) (*ZambrettiForecast,
 	}
 
 	return &forecast, nil
+}
+
+// GetWBGT returns the current outdoor wet bulb globe temperature (Liljegren),
+// using the dragonfly cache when configured.
+func (c *TimescaleClient) GetWBGT(ctx context.Context) (*WBGTReading, error) {
+	if c.Dfly != nil {
+		cacheKey := fmt.Sprintf("%s-%s", c.Dfly.KeyPrefix, wbgtCacheKey)
+		if res, err := c.Dfly.GetClient().Get(ctx, cacheKey).Result(); err == nil {
+			var reading WBGTReading
+			if err := json.Unmarshal([]byte(res), &reading); err != nil {
+				slog.Error("failed to unmarshal from dragonfly", slog.String("error", err.Error()))
+			} else {
+				return &reading, nil
+			}
+		} else if !errors.Is(err, redis.Nil) {
+			slog.Error("failed to get from dragonfly", slog.String("error", err.Error()))
+		}
+	}
+
+	var t time.Time
+	var tempF, humidity, presInHg, solarWm2, windMPH float64
+	err := c.Pool.QueryRow(ctx, getWBGTQuery).Scan(&t, &tempF, &humidity, &presInHg, &solarWm2, &windMPH)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query wbgt inputs: %w", err)
+	}
+
+	airC := meteo.FAHtoC(tempF)
+	u2 := meteo.WindTo2m(meteo.MPHtoMS(windMPH), anemometerHeightM)
+	r := meteo.WBGT(t.UTC(), siteLatitudeDeg, siteLongitudeDeg, airC, humidity, presInHg*meteo.InHgToHPa, solarWm2, u2)
+	if !r.OK {
+		return nil, fmt.Errorf("wbgt solver did not converge")
+	}
+
+	category, level := wbgtCategory(r.WBGT)
+	reading := WBGTReading{
+		Time:           t,
+		WBGTC:          r.WBGT,
+		WBGTF:          r.WBGT*9.0/5.0 + 32,
+		Category:       category,
+		Level:          level,
+		GlobeC:         r.Globe,
+		NaturalWetBulb: r.NaturalWetBulb,
+		AirC:           airC,
+	}
+
+	if c.Dfly != nil {
+		cacheKey := fmt.Sprintf("%s-%s", c.Dfly.KeyPrefix, wbgtCacheKey)
+		if b, err := json.Marshal(reading); err != nil {
+			slog.Error("failed to marshal to dragonfly", slog.String("error", err.Error()))
+		} else if err := c.Dfly.GetClient().Set(ctx, cacheKey, b, c.Dfly.CacheResultsDuration).Err(); err != nil {
+			slog.Error("failed to set to dragonfly", slog.String("error", err.Error()))
+		}
+	}
+
+	return &reading, nil
+}
+
+// wbgtCategory maps an outdoor WBGT (deg C) to a heat-stress class, following
+// the common WBGT activity/flag breakpoints (about 25.6, 27.8, 29.5, 31.1 C).
+func wbgtCategory(c float64) (string, int) {
+	switch {
+	case c >= 31.1:
+		return "Extreme", 4
+	case c >= 29.5:
+		return "Very high", 3
+	case c >= 27.8:
+		return "High", 2
+	case c >= 25.6:
+		return "Moderate", 1
+	default:
+		return "Low", 0
+	}
 }
 
 // trendLabel names the pressure trend using the same 0.1 hPa/hour deadband as

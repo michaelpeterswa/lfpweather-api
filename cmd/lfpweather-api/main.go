@@ -104,6 +104,8 @@ func main() {
 
 	fireDangerHandler := handlers.NewFireDangerHandler(timescaleClient)
 
+	meteoHandler := handlers.NewMeteoHandler(timescaleClient)
+
 	catalog, err := timescaleClient.IntrospectCatalog(ctx)
 	if err != nil {
 		slog.Error("could not introspect sensor catalog", slog.String("error", err.Error()))
@@ -168,6 +170,10 @@ func main() {
 
 	// fire weather
 	v1Subrouter.HandleFunc("/fire_danger/summary", fireDangerHandler.GetSummary).Methods(http.MethodGet)
+
+	// derived weather metrics
+	v1Subrouter.HandleFunc("/gdd", meteoHandler.GetGDD).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/zambretti", meteoHandler.GetZambretti).Methods(http.MethodGet)
 
 	// 7d data
 	v1Subrouter.HandleFunc("/temperature/7d", weatherHandler.GetTemperature7d).Methods(http.MethodGet)

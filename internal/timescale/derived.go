@@ -20,9 +20,19 @@ var getGDDQuery string
 //go:embed queries/getzambretti.pgsql
 var getZambrettiQuery string
 
+//go:embed queries/getet0.pgsql
+var getET0Query string
+
 // gddBaseF is the growing degree day base temperature in degrees Fahrenheit.
 // 50 F is the general agronomic and pest-phenology default.
 const gddBaseF = 50.0
+
+// Site constants for the FAO-56 reference evapotranspiration.
+const (
+	siteLatitudeDeg   = 47.68 // Lake Forest Park, WA
+	siteElevationM    = 33.53 // 110 ft
+	anemometerHeightM = 3.0
+)
 
 // siteLSTOffset is the site's fixed local standard time offset (PST). It is used
 // only to pick the calendar month for the Zambretti seasonal adjustment, so a
@@ -32,6 +42,7 @@ const siteLSTOffset = -8 * time.Hour
 const (
 	gddCacheKey       = "gdd"
 	zambrettiCacheKey = "zambretti"
+	et0CacheKey       = "et0"
 )
 
 // GDDPoint is one day of the growing degree day series.
@@ -59,6 +70,21 @@ type ZambrettiForecast struct {
 	PressureHPa     float64   `json:"pressure_hpa"`
 	TrendHPaPerHour float64   `json:"trend_hpa_per_hour"`
 	WindDirDeg      float64   `json:"wind_dir_deg"`
+}
+
+// ET0Point is one day of the reference evapotranspiration series.
+type ET0Point struct {
+	Date        string  `json:"date"` // YYYY-MM-DD, local
+	ET0         float64 `json:"et0"`  // mm for the day
+	Accumulated float64 `json:"accumulated"`
+}
+
+// ET0Summary is the payload of GET /api/v1/et0.
+type ET0Summary struct {
+	Since string     `json:"since"`
+	AsOf  string     `json:"as_of"`
+	Total float64    `json:"total"` // accumulated mm year to date
+	Daily []ET0Point `json:"daily"`
 }
 
 // GetGDD returns the year-to-date growing degree day series (base 50 F) using
@@ -113,6 +139,73 @@ func (c *TimescaleClient) GetGDD(ctx context.Context) (*GDDSummary, error) {
 
 	if c.Dfly != nil {
 		cacheKey := fmt.Sprintf("%s-%s", c.Dfly.KeyPrefix, gddCacheKey)
+		if b, err := json.Marshal(summary); err != nil {
+			slog.Error("failed to marshal to dragonfly", slog.String("error", err.Error()))
+		} else if err := c.Dfly.GetClient().Set(ctx, cacheKey, b, c.Dfly.CacheResultsDuration).Err(); err != nil {
+			slog.Error("failed to set to dragonfly", slog.String("error", err.Error()))
+		}
+	}
+
+	return &summary, nil
+}
+
+// GetET0 returns the year-to-date daily reference evapotranspiration series
+// (FAO-56 Penman-Monteith), using the dragonfly cache when configured.
+func (c *TimescaleClient) GetET0(ctx context.Context) (*ET0Summary, error) {
+	if c.Dfly != nil {
+		cacheKey := fmt.Sprintf("%s-%s", c.Dfly.KeyPrefix, et0CacheKey)
+		if res, err := c.Dfly.GetClient().Get(ctx, cacheKey).Result(); err == nil {
+			var summary ET0Summary
+			if err := json.Unmarshal([]byte(res), &summary); err != nil {
+				slog.Error("failed to unmarshal from dragonfly", slog.String("error", err.Error()))
+			} else {
+				return &summary, nil
+			}
+		} else if !errors.Is(err, redis.Nil) {
+			slog.Error("failed to get from dragonfly", slog.String("error", err.Error()))
+		}
+	}
+
+	rows, err := c.Pool.Query(ctx, getET0Query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query evapotranspiration: %w", err)
+	}
+	defer rows.Close()
+
+	summary := ET0Summary{Daily: []ET0Point{}}
+	var accumulated float64
+	for rows.Next() {
+		var day time.Time
+		var tMaxF, tMinF, rhMax, rhMin, windMPH, solarWm2 float64
+		if err := rows.Scan(&day, &tMaxF, &tMinF, &rhMax, &rhMin, &windMPH, &solarWm2); err != nil {
+			slog.Error("failed to scan et0 row", slog.String("error", err.Error()))
+			continue
+		}
+		u2 := meteo.WindTo2m(meteo.MPHtoMS(windMPH), anemometerHeightM)
+		et0 := meteo.FAO56ETo(
+			meteo.FAHtoC(tMaxF), meteo.FAHtoC(tMinF),
+			rhMax, rhMin, u2, meteo.Wm2ToMJPerDay(solarWm2),
+			siteElevationM, siteLatitudeDeg, day.YearDay(),
+		)
+		accumulated += et0
+		summary.Daily = append(summary.Daily, ET0Point{
+			Date:        day.Format("2006-01-02"),
+			ET0:         et0,
+			Accumulated: accumulated,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate et0 rows: %w", err)
+	}
+
+	summary.Total = accumulated
+	if len(summary.Daily) > 0 {
+		summary.Since = summary.Daily[0].Date
+		summary.AsOf = summary.Daily[len(summary.Daily)-1].Date
+	}
+
+	if c.Dfly != nil {
+		cacheKey := fmt.Sprintf("%s-%s", c.Dfly.KeyPrefix, et0CacheKey)
 		if b, err := json.Marshal(summary); err != nil {
 			slog.Error("failed to marshal to dragonfly", slog.String("error", err.Error()))
 		} else if err := c.Dfly.GetClient().Set(ctx, cacheKey, b, c.Dfly.CacheResultsDuration).Err(); err != nil {

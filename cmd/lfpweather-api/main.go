@@ -174,6 +174,8 @@ func main() {
 	// derived weather metrics
 	v1Subrouter.HandleFunc("/gdd", meteoHandler.GetGDD).Methods(http.MethodGet)
 	v1Subrouter.HandleFunc("/zambretti", meteoHandler.GetZambretti).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/et0", meteoHandler.GetET0).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/wbgt", meteoHandler.GetWBGT).Methods(http.MethodGet)
 
 	// 7d data
 	v1Subrouter.HandleFunc("/temperature/7d", weatherHandler.GetTemperature7d).Methods(http.MethodGet)

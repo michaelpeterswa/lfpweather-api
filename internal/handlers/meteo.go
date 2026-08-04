@@ -27,6 +27,16 @@ func (s *MeteoHandler) GetGDD(w http.ResponseWriter, r *http.Request) {
 	writeMeteoJSON(w, r, summary, "growing degree days")
 }
 
+// GetET0 serves GET /api/v1/et0: the year-to-date reference evapotranspiration.
+func (s *MeteoHandler) GetET0(w http.ResponseWriter, r *http.Request) {
+	summary, err := s.timescaleClient.GetET0(r.Context())
+	if err != nil {
+		writeMeteoProblem(w, r, "failed to get reference evapotranspiration", err.Error())
+		return
+	}
+	writeMeteoJSON(w, r, summary, "reference evapotranspiration")
+}
+
 // GetZambretti serves GET /api/v1/zambretti: the current Zambretti forecast.
 func (s *MeteoHandler) GetZambretti(w http.ResponseWriter, r *http.Request) {
 	forecast, err := s.timescaleClient.GetZambretti(r.Context())

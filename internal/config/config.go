@@ -16,6 +16,12 @@ type Config struct {
 	DragonflyKeyPrefix   string        `env:"DRAGONFLY_KEY_PREFIX" envDefault:"lfpweather"`
 	CacheResultsDuration time.Duration `env:"CACHE_RESULTS_DURATION" envDefault:"5m"`
 
+	// records endpoint (/api/v1/records/{period}) cache tiers. A completed
+	// period never changes, so it is cached for much longer than an in-progress
+	// one.
+	RecordsCacheCurrentDuration  time.Duration `env:"RECORDS_CACHE_CURRENT_DURATION" envDefault:"5m"`
+	RecordsCacheCompleteDuration time.Duration `env:"RECORDS_CACHE_COMPLETE_DURATION" envDefault:"720h"` // 30d
+
 	TimescaleConnString string `env:"TIMESCALE_CONN_STRING,required"`
 	Port                int    `env:"PORT" envDefault:"8080"`
 

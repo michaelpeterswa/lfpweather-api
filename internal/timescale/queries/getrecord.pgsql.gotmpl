@@ -1,0 +1,18 @@
+-- The single extreme reading of one column over a time window, with the
+-- timestamp at which it happened. Direction is DESC for a record high and ASC
+-- for a record low. The window is [$1, $2). A NULL reading is skipped so the
+-- extreme is a real observation, not a gap.
+SELECT
+    "time",
+    {{.Column}}::float8 AS value
+FROM
+    sensors.{{.Table}}
+WHERE
+    "time" >= $1
+    AND "time" < $2
+    AND {{.Column}} IS NOT NULL
+    {{if .SerialFiltered}}AND serial_number IN ('{{.Serial}}'){{end}}
+    {{if .ExcludeSpinup}}AND NOT spinup{{end}}
+ORDER BY
+    {{.Column}} {{.Direction}}
+LIMIT 1

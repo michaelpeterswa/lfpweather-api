@@ -18,7 +18,7 @@ jobs:
   golangci-lint:
     strategy:
       matrix:
-        go-version: [1.22.x]
+        go-version: [1.25.x]
         os: [ubuntu-latest]
     name: lint
     runs-on: ${{ matrix.os }}
@@ -30,11 +30,18 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      # The prebuilt golangci-lint binaries are built with an older Go than this
+      # module targets (its OpenTelemetry dependencies require go 1.25), so the
+      # downloaded binary refuses to lint it. Build golangci-lint from source
+      # with the project toolchain instead.
+      - name: Install golangci-lint
+        run: |
+          pkg=github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          go install "$pkg"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v5.2.0
-        with:
-          version: v1.62.2
-          args: --timeout=5m --enable=bodyclose
+        run: golangci-lint run --timeout=5m
 
   yamllint:
     runs-on: ubuntu-latest

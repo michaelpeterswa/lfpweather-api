@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -31,6 +32,12 @@ func NewDragonflyClient(host string, port int, password string, cacheResultsDura
 	}
 
 	redisClient := redis.NewClient(redisOpts)
+
+	// Span cache operations so they nest under the request span, next to the
+	// otelpgx database spans. A no-op while tracing is disabled.
+	if err := redisotel.InstrumentTracing(redisClient); err != nil {
+		return nil, fmt.Errorf("instrument dragonfly tracing: %w", err)
+	}
 
 	pingCtx, pingCancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer pingCancel()

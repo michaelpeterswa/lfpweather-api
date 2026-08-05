@@ -10,6 +10,8 @@ import (
 
 	"github.com/alpineworks/ootel"
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
+
 	"github.com/michaelpeterswa/lfpweather-api/internal/config"
 	"github.com/michaelpeterswa/lfpweather-api/internal/dragonfly"
 	"github.com/michaelpeterswa/lfpweather-api/internal/handlers"
@@ -124,6 +126,10 @@ func main() {
 	recordsHandler := handlers.NewRecordsHandler(timescaleClient, catalog, c.QueryTimeout)
 
 	r := mux.NewRouter()
+	// Extract the incoming trace context and span each request, so a call from
+	// lfpweather-mcp continues the agent's trace into this service and its
+	// database spans. A no-op when tracing is disabled.
+	r.Use(otelmux.Middleware(c.TracingService))
 	apiRouter := r.PathPrefix("/api").Subrouter()
 	v1Subrouter := apiRouter.PathPrefix("/v1").Subrouter()
 

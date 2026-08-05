@@ -27,6 +27,11 @@ type TimescaleClient struct {
 	getColumnTemplate     *template.Template
 	getColumnLastTemplate *template.Template
 	getBirdnetTemplate    *template.Template
+
+	// records cache tiers. A completed period is cached with the longer
+	// duration; the in-progress period uses the shorter one.
+	recordsCacheCurrent  time.Duration
+	recordsCacheComplete time.Duration
 }
 
 //go:embed queries/getcolumn.pgsql.gotmpl
@@ -74,6 +79,16 @@ type TimescaleClientOption func(*TimescaleClient)
 func WithDragonflyClient(dfly *dragonfly.DragonflyClient) TimescaleClientOption {
 	return func(c *TimescaleClient) {
 		c.Dfly = dfly
+	}
+}
+
+// WithRecordsCache sets the two cache tiers for the records endpoint. The
+// current duration applies to an in-progress period; the complete duration
+// applies to a finished period, which never changes.
+func WithRecordsCache(current, complete time.Duration) TimescaleClientOption {
+	return func(c *TimescaleClient) {
+		c.recordsCacheCurrent = current
+		c.recordsCacheComplete = complete
 	}
 }
 

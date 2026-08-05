@@ -76,7 +76,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	timescaleClient, err := timescale.NewTimescaleClient(ctx, c.TimescaleConnString, timescale.WithDragonflyClient(dragonflyClient))
+	timescaleClient, err := timescale.NewTimescaleClient(ctx, c.TimescaleConnString,
+		timescale.WithDragonflyClient(dragonflyClient),
+		timescale.WithRecordsCache(c.RecordsCacheCurrentDuration, c.RecordsCacheCompleteDuration),
+	)
 	if err != nil {
 		slog.Error("could not create timescale client", slog.String("error", err.Error()))
 		os.Exit(1)
@@ -117,6 +120,8 @@ func main() {
 		TargetPoints: c.QueryTargetPoints,
 		MaxPoints:    c.QueryMaxPoints,
 	}, c.QueryTimeout)
+
+	recordsHandler := handlers.NewRecordsHandler(timescaleClient, catalog, c.QueryTimeout)
 
 	r := mux.NewRouter()
 	apiRouter := r.PathPrefix("/api").Subrouter()
@@ -167,6 +172,9 @@ func main() {
 	// structured query endpoint
 	v1Subrouter.HandleFunc("/query", queryHandler.PostQuery).Methods(http.MethodPost)
 	v1Subrouter.HandleFunc("/query/fields", queryHandler.GetFields).Methods(http.MethodGet)
+
+	// records
+	v1Subrouter.HandleFunc("/records/{period}", recordsHandler.GetRecords).Methods(http.MethodGet)
 
 	// fire weather
 	v1Subrouter.HandleFunc("/fire_danger/summary", fireDangerHandler.GetSummary).Methods(http.MethodGet)

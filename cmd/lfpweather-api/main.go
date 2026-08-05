@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/alpineworks/ootel"
+	"alpineworks.io/ootel"
 	"github.com/gorilla/mux"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
 
@@ -50,6 +50,7 @@ func main() {
 		ootel.WithMetricConfig(
 			ootel.NewMetricConfig(
 				c.MetricsEnabled,
+				ootel.ExporterTypePrometheus,
 				c.MetricsPort,
 			),
 		),

@@ -98,7 +98,7 @@ func (emc *ElectricityMapsClient) GetZones(ctx context.Context, useApiKey bool) 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to get zones: %s", resp.Status)
@@ -196,7 +196,7 @@ func (emc *ElectricityMapsClient) GetPowerBreakdownLatest(ctx context.Context, z
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to get power breakdown: %s", resp.Status)

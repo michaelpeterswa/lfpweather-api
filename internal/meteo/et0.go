@@ -45,7 +45,7 @@ func FAO56ETo(tMaxC, tMinC, rhMax, rhMin, u2, rsMJ, elevM, latDeg float64, dayOf
 	gamma := 0.000665 * p
 
 	// Slope of the saturation vapour pressure curve at Tmean (eq. 13).
-	delta := 4098 * saturationVapourPressure(tMean) / math.Pow(tMean+237.3, 2)
+	delta := 4098 * saturationVapourPressure(tMean) / ((tMean + 237.3) * (tMean + 237.3))
 
 	// Saturation and actual vapour pressure (eq. 12, 17).
 	esMax := saturationVapourPressure(tMaxC)

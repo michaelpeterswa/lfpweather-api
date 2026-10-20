@@ -34,13 +34,14 @@ func (h *TemperatureForecastHandler) GetLatest(w http.ResponseWriter, r *http.Re
 			return
 		}
 		slog.Error("failed to get temperature forecast", slog.String("error", err.Error()))
-		writeProblem(w, r, http.StatusInternalServerError, "failed to get temperature forecast", err.Error())
+		writeProblem(w, r, http.StatusInternalServerError, "failed to get temperature forecast", "an internal error occurred")
 		return
 	}
 
 	res, err := json.Marshal(forecast)
 	if err != nil {
-		writeProblem(w, r, http.StatusInternalServerError, "failed to marshal temperature forecast", err.Error())
+		slog.Error("failed to marshal temperature forecast", slog.String("error", err.Error()))
+		writeProblem(w, r, http.StatusInternalServerError, "failed to marshal temperature forecast", "an internal error occurred")
 		return
 	}
 

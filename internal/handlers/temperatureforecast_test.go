@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,11 +77,14 @@ func TestTemperatureForecastNotFound(t *testing.T) {
 }
 
 func TestTemperatureForecastError(t *testing.T) {
-	rec := serve(&fakeForecastGetter{err: errors.New("boom")})
+	rec := serve(&fakeForecastGetter{err: errors.New("pq: password authentication failed for user secret")})
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
 		t.Fatalf("content-type = %q", ct)
+	}
+	if strings.Contains(rec.Body.String(), "secret") {
+		t.Fatalf("error detail leaked: %s", rec.Body.String())
 	}
 }

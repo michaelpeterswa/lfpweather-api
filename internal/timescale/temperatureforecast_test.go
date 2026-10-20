@@ -143,3 +143,11 @@ func TestSelectForecastNoNWS(t *testing.T) {
 		t.Error("Observed should be non-nil empty slice")
 	}
 }
+
+func TestObservedWindow(t *testing.T) {
+	issued := time.Date(2026, 10, 19, 11, 0, 0, 0, time.UTC)
+	from, to := observedWindow(issued)
+	if !from.Equal(issued.Add(-12*time.Hour)) || !to.Equal(issued) {
+		t.Errorf("window = %v..%v, want issued-12h..issued", from, to)
+	}
+}

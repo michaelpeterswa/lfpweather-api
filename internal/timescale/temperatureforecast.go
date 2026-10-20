@@ -136,6 +136,12 @@ func selectForecast(rows []forecastRow, preferred string, now time.Time, maxAge 
 	return out, nil
 }
 
+// observedWindow returns the observation bounds for a run: the 12 hours up to
+// its (hour-aligned) issued_at.
+func observedWindow(issuedAt time.Time) (from, to time.Time) {
+	return issuedAt.Add(-12 * time.Hour), issuedAt
+}
+
 // GetTemperatureForecast returns the freshest usable 24h temperature forecast
 // with the NWS reference series and the last 12h of observations, using the
 // dragonfly cache when it is configured.
@@ -183,7 +189,8 @@ func (c *TimescaleClient) GetTemperatureForecast(ctx context.Context, preferred 
 		return nil, err
 	}
 
-	obsRows, err := c.Pool.Query(ctx, getTemperatureForecastObservedQuery, now)
+	from, to := observedWindow(f.IssuedAt)
+	obsRows, err := c.Pool.Query(ctx, getTemperatureForecastObservedQuery, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query observed temperature: %w", err)
 	}

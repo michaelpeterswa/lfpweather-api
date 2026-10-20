@@ -110,6 +110,8 @@ func main() {
 
 	fireDangerHandler := handlers.NewFireDangerHandler(timescaleClient)
 
+	temperatureForecastHandler := handlers.NewTemperatureForecastHandler(timescaleClient, c.ForecastPreferredSource, c.ForecastMaxAge)
+
 	meteoHandler := handlers.NewMeteoHandler(timescaleClient)
 
 	catalog, err := timescaleClient.IntrospectCatalog(ctx)
@@ -185,6 +187,7 @@ func main() {
 
 	// fire weather
 	v1Subrouter.HandleFunc("/fire_danger/summary", fireDangerHandler.GetSummary).Methods(http.MethodGet)
+	v1Subrouter.HandleFunc("/temperature_forecast/latest", temperatureForecastHandler.GetLatest).Methods(http.MethodGet)
 
 	// derived weather metrics
 	v1Subrouter.HandleFunc("/gdd", meteoHandler.GetGDD).Methods(http.MethodGet)

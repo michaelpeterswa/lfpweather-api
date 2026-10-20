@@ -31,6 +31,11 @@ type Config struct {
 	QueryMaxPoints    int           `env:"QUERY_MAX_POINTS" envDefault:"5000"`
 	QueryTimeout      time.Duration `env:"QUERY_TIMEOUT" envDefault:"10s"`
 
+	// temperature forecast endpoint: which source to serve when fresh, and how
+	// old a run may be before it is considered stale.
+	ForecastPreferredSource string        `env:"FORECAST_PREFERRED_SOURCE" envDefault:"timestral"`
+	ForecastMaxAge          time.Duration `env:"FORECAST_MAX_AGE" envDefault:"3h"`
+
 	AuthenticationEnabled bool     `env:"AUTHENTICATION_ENABLED" envDefault:"false"`
 	APIKeys               []string `env:"API_KEYS"`
 

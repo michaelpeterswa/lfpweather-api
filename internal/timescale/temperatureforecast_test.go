@@ -151,3 +151,25 @@ func TestObservedWindow(t *testing.T) {
 		t.Errorf("window = %v..%v, want issued-12h..issued", from, to)
 	}
 }
+
+type fakeRows struct {
+	n       int
+	scanErr error
+}
+
+func (f *fakeRows) Next() bool        { f.n--; return f.n >= 0 }
+func (f *fakeRows) Scan(...any) error { return f.scanErr }
+func (f *fakeRows) Err() error        { return nil }
+
+func TestScanRowsReturnScanError(t *testing.T) {
+	boom := errors.New("boom")
+	if _, err := scanForecastRows(&fakeRows{n: 3, scanErr: boom}); !errors.Is(err, boom) {
+		t.Errorf("forecast: err = %v, want wrapped boom", err)
+	}
+	if _, err := scanObservedRows(&fakeRows{n: 3, scanErr: boom}); !errors.Is(err, boom) {
+		t.Errorf("observed: err = %v, want wrapped boom", err)
+	}
+	if rows, err := scanObservedRows(&fakeRows{n: 2}); err != nil || len(rows) != 2 {
+		t.Errorf("ok path: %v %v", rows, err)
+	}
+}

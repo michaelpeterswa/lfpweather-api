@@ -136,6 +136,48 @@ func selectForecast(rows []forecastRow, preferred string, now time.Time, maxAge 
 	return out, nil
 }
 
+// rowIterator is the subset of pgx.Rows the scan helpers need.
+type rowIterator interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+}
+
+// scanForecastRows reads every run row. A scan failure is returned, never
+// skipped, so a partial forecast is not served or cached.
+func scanForecastRows(rows rowIterator) ([]forecastRow, error) {
+	var runs []forecastRow
+	for rows.Next() {
+		var r forecastRow
+		var lead int16
+		if err := rows.Scan(&r.IssuedAt, &r.Source, &r.ValidAt, &lead, &r.Temperature, &r.Quantiles, &r.Model); err != nil {
+			return nil, fmt.Errorf("failed to scan temperature forecast row: %w", err)
+		}
+		r.LeadHours = int(lead)
+		runs = append(runs, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate temperature forecast rows: %w", err)
+	}
+	return runs, nil
+}
+
+// scanObservedRows reads every observed row, returning scan failures.
+func scanObservedRows(rows rowIterator) ([]TemperaturePoint, error) {
+	out := []TemperaturePoint{}
+	for rows.Next() {
+		var p TemperaturePoint
+		if err := rows.Scan(&p.Time, &p.Temperature); err != nil {
+			return nil, fmt.Errorf("failed to scan observed temperature row: %w", err)
+		}
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate observed temperature rows: %w", err)
+	}
+	return out, nil
+}
+
 // observedWindow returns the observation bounds for a run: the 12 hours up to
 // its (hour-aligned) issued_at.
 func observedWindow(issuedAt time.Time) (from, to time.Time) {
@@ -168,19 +210,9 @@ func (c *TimescaleClient) GetTemperatureForecast(ctx context.Context, preferred 
 	}
 	defer rows.Close()
 
-	var runs []forecastRow
-	for rows.Next() {
-		var r forecastRow
-		var lead int16
-		if err := rows.Scan(&r.IssuedAt, &r.Source, &r.ValidAt, &lead, &r.Temperature, &r.Quantiles, &r.Model); err != nil {
-			slog.Error("failed to scan temperature forecast row", slog.String("error", err.Error()))
-			continue
-		}
-		r.LeadHours = int(lead)
-		runs = append(runs, r)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate temperature forecast rows: %w", err)
+	runs, err := scanForecastRows(rows)
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now()
@@ -195,17 +227,11 @@ func (c *TimescaleClient) GetTemperatureForecast(ctx context.Context, preferred 
 		return nil, fmt.Errorf("failed to query observed temperature: %w", err)
 	}
 	defer obsRows.Close()
-	for obsRows.Next() {
-		var p TemperaturePoint
-		if err := obsRows.Scan(&p.Time, &p.Temperature); err != nil {
-			slog.Error("failed to scan observed temperature row", slog.String("error", err.Error()))
-			continue
-		}
-		f.Observed = append(f.Observed, p)
+	observed, err := scanObservedRows(obsRows)
+	if err != nil {
+		return nil, err
 	}
-	if err := obsRows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate observed temperature rows: %w", err)
-	}
+	f.Observed = observed
 
 	if c.Dfly != nil {
 		b, err := json.Marshal(f)

@@ -1,10 +1,11 @@
 -- The record values of several columns of one table over the window [$1, $2),
 -- in a single scan: max for a record high, min for a record low. Aggregates
 -- skip NULL readings, so each value is a real observation, and a column with
--- no reading in the window yields NULL.
+-- no reading in the window yields NULL. A plausibility bound (Max) drops
+-- glitched spikes from a high.
 SELECT
 {{- range $i, $e := .Extremes}}
-    {{if $i}},{{end}}{{$e.Agg}}({{$e.Column}})::float8
+    {{if $i}},{{end}}({{$e.Agg}}({{$e.Column}}){{if $e.Max}} FILTER (WHERE {{$e.Column}} <= {{$e.Max}}){{end}})::float8
 {{- end}}
 FROM
     sensors.{{.Table}}

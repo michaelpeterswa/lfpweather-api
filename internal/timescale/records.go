@@ -43,22 +43,38 @@ var recordsAllStart = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 type recordDef struct {
 	Metric string
 	Low    bool
+	// Max, when set, is the highest physically plausible reading. A record high
+	// ignores anything above it, so a single glitched sample cannot stand as a
+	// record forever. It bounds only highs: the glitches seen are all spikes.
+	Max float64
 }
 
 // recordDefs is the curated, ordered set of metrics shown on the records page.
 // Each metric name resolves through the same allowlist and column catalog as
 // the structured query endpoint, so the set can only ever name a known column.
+//
+// The Max bounds come from glitches that became all-time records once the
+// all-time period started loading. Each was a single sample with ordinary
+// readings either side and no matching change in any other measurement:
+//
+//   - wind_gust 175.25 mph (2026-04-15); the next-highest day in two years
+//     was 17.9 mph, and the hours either side read about 5 mph.
+//   - rain_rate 3032 counts, 30.32 in/hr (2025-11-14), and 691.5 counts
+//     (2025-03-20), with the daily rain total flat through both. The highest
+//     real rate is 229 counts (2.29 in/hr). Rain is in 0.01 in bucket tips.
+//
+// The bounds sit far above anything real at this station.
 var recordDefs = []recordDef{
-	{"temperature", true},
-	{"humidity", true},
-	{"pressure", true},
-	{"wind_gust", false},
-	{"rain_rate", false},
-	{"rain_24h", false},
-	{"solar_radiation", false},
-	{"uv_index", false},
-	{"erc", false},
-	{"burning_index", false},
+	{Metric: "temperature", Low: true},
+	{Metric: "humidity", Low: true},
+	{Metric: "pressure", Low: true},
+	{Metric: "wind_gust", Max: 100},
+	{Metric: "rain_rate", Max: 500},
+	{Metric: "rain_24h"},
+	{Metric: "solar_radiation"},
+	{Metric: "uv_index"},
+	{Metric: "erc"},
+	{Metric: "burning_index"},
 }
 
 // RecordExtreme is a single extreme reading and the time it happened.
@@ -146,9 +162,10 @@ var (
 // (min) of a column, and where its result goes.
 type recordExtreme struct {
 	Column string
-	Agg    string // "max" for a high, "min" for a low
-	Param  int    // placeholder holding the value in the times query
-	record int    // index into RecordsResponse.Records
+	Agg    string  // "max" for a high, "min" for a low
+	Max    float64 // when set, readings above it are ignored (see recordDef)
+	Param  int     // placeholder holding the value in the times query
+	record int     // index into RecordsResponse.Records
 	high   bool
 }
 
@@ -198,7 +215,7 @@ func buildRecordScans(catalog Catalog) ([]MetricRecord, []*recordScan) {
 
 		idx := len(records)
 		records = append(records, MetricRecord{Metric: rd.Metric})
-		scan.Extremes = append(scan.Extremes, recordExtreme{Column: def.Column, Agg: "max", record: idx, high: true})
+		scan.Extremes = append(scan.Extremes, recordExtreme{Column: def.Column, Agg: "max", Max: rd.Max, record: idx, high: true})
 		if rd.Low {
 			scan.Extremes = append(scan.Extremes, recordExtreme{Column: def.Column, Agg: "min", record: idx})
 		}
@@ -323,12 +340,17 @@ func mergeRecords(periods []*RecordsResponse) []MetricRecord {
 	return merged
 }
 
+// recordsCacheVersion is part of every records cache key. Bump it when the
+// record definitions change, so completed periods cached under the old ones
+// (for the long tier, a month) are recomputed instead of served.
+const recordsCacheVersion = "2"
+
 // recordsCacheKey keys a record set by period and window start. The window
 // start alone fixes the window (period plus start implies end), so a completed
 // period keeps a stable key forever, while the current period's key is stable
 // within its short cache tier.
 func (c *TimescaleClient) recordsCacheKey(period string, start time.Time) string {
-	raw := strings.Join([]string{"records", period, start.UTC().Format(time.RFC3339)}, "|")
+	raw := strings.Join([]string{"records", recordsCacheVersion, period, start.UTC().Format(time.RFC3339)}, "|")
 	return fmt.Sprintf("%s-%s", c.Dfly.KeyPrefix, strconv.FormatUint(xxhash.Sum64String(raw), 16))
 }
 

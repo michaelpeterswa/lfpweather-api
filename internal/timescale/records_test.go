@@ -204,8 +204,8 @@ func TestRecordTemplates(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"max(burning_index)::float8",
-		",min(burning_index)::float8",
+		"(max(burning_index))::float8",
+		",(min(burning_index))::float8",
 		"FROM\n    sensors.fire_danger",
 		"AND NOT spinup",
 	} {
@@ -260,5 +260,31 @@ func TestMergeRecords(t *testing.T) {
 	}
 	if got[1].High.Value != 60 || got[1].Low != nil {
 		t.Errorf("erc = %+v, want high 60 and no low", got[1])
+	}
+}
+
+// TestRecordPlausibilityBound checks a bounded high filters out readings above
+// its bound, and that the bound reaches the scan from recordDefs.
+func TestRecordPlausibilityBound(t *testing.T) {
+	_, scans := buildRecordScans(recordsTestCatalog)
+	var bounded *recordExtreme
+	for _, ex := range scans[0].Extremes {
+		if ex.Column == "wind_speed_high_last_10_min" {
+			ex := ex
+			bounded = &ex
+		}
+	}
+	if bounded == nil || bounded.Max != 100 {
+		t.Fatalf("wind gust extreme = %+v, want Max 100", bounded)
+	}
+
+	var values strings.Builder
+	scan := &recordScan{Table: "vantagepro2plus", Extremes: []recordExtreme{*bounded}}
+	if err := getRecordValuesTmpl.Execute(&values, scan); err != nil {
+		t.Fatal(err)
+	}
+	want := "(max(wind_speed_high_last_10_min) FILTER (WHERE wind_speed_high_last_10_min <= 100))::float8"
+	if !strings.Contains(values.String(), want) {
+		t.Errorf("values query missing %q:\n%s", want, values.String())
 	}
 }

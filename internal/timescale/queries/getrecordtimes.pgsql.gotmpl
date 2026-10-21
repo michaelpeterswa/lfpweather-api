@@ -1,0 +1,14 @@
+-- The earliest time each record value was seen over the window [$1, $2), in a
+-- single scan. Each value comes from getrecordvalues and is passed back as a
+-- parameter; the cast matches that query's so the comparison is exact.
+SELECT
+{{- range $i, $e := .Extremes}}
+    {{if $i}},{{end}}min("time") FILTER (WHERE {{$e.Column}}::float8 = ${{$e.Param}})
+{{- end}}
+FROM
+    sensors.{{.Table}}
+WHERE
+    "time" >= $1
+    AND "time" < $2
+    {{if .SerialFiltered}}AND serial_number IN ('{{.Serial}}'){{end}}
+    {{if .ExcludeSpinup}}AND NOT spinup{{end}}

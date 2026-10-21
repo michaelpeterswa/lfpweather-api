@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
@@ -16,7 +17,6 @@ import (
 	_ "time/tzdata" // embed the zoneinfo database so America/Los_Angeles loads on a minimal image
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -131,18 +131,80 @@ func ParseAt(s string) (time.Time, error) {
 	return time.Time{}, verr("invalid at %q; use an RFC3339 timestamp or a YYYY-MM-DD date", s)
 }
 
-//go:embed queries/getrecord.pgsql.gotmpl
-var getRecordTemplate string
+//go:embed queries/getrecordvalues.pgsql.gotmpl
+var getRecordValuesTemplate string
 
-var getRecordTmpl = template.Must(template.New("getRecord").Parse(getRecordTemplate))
+//go:embed queries/getrecordtimes.pgsql.gotmpl
+var getRecordTimesTemplate string
 
-type recordTemplateParams struct {
+var (
+	getRecordValuesTmpl = template.Must(template.New("getRecordValues").Parse(getRecordValuesTemplate))
+	getRecordTimesTmpl  = template.Must(template.New("getRecordTimes").Parse(getRecordTimesTemplate))
+)
+
+// recordExtreme is one aggregate in a records scan: the high (max) or low
+// (min) of a column, and where its result goes.
+type recordExtreme struct {
+	Column string
+	Agg    string // "max" for a high, "min" for a low
+	Param  int    // placeholder holding the value in the times query
+	record int    // index into RecordsResponse.Records
+	high   bool
+}
+
+// recordScan is every extreme the curated set needs from one table. All of a
+// table's extremes are found in two scans of the window (values, then times)
+// instead of one ORDER BY ... LIMIT 1 scan per extreme: the whole-window scan
+// is the expensive part, and vantagepro2plus alone used to be scanned 11 times.
+type recordScan struct {
 	Table          string
-	Column         string
 	SerialFiltered bool
 	Serial         string
 	ExcludeSpinup  bool
-	Direction      string // DESC for a high, ASC for a low
+	Extremes       []recordExtreme
+}
+
+// buildRecordScans resolves the curated set against the catalog and groups its
+// extremes by table, in recordDefs order. It returns the (still empty) records
+// the scans fill in.
+func buildRecordScans(catalog Catalog) ([]MetricRecord, []*recordScan) {
+	var records []MetricRecord
+	var scans []*recordScan
+	byTable := map[string]*recordScan{}
+
+	for _, rd := range recordDefs {
+		def, err := resolveMetric(rd.Metric, catalog)
+		if err != nil {
+			// A record metric names a column outside the live catalog. Skip it
+			// rather than fail the whole page; the column may not exist yet.
+			slog.Error("skipping unresolved record metric", slog.String("metric", rd.Metric), slog.String("error", err.Error()))
+			continue
+		}
+
+		scan, ok := byTable[def.Table]
+		if !ok {
+			scan = &recordScan{
+				Table:          def.Table,
+				SerialFiltered: def.SerialFiltered,
+				Serial:         airgradientSerial,
+				// fire_danger carries late-2024 spin-up warm-up rows that would
+				// report a false extreme; exclude them, matching the fire danger
+				// summary.
+				ExcludeSpinup: def.Table == "fire_danger",
+			}
+			byTable[def.Table] = scan
+			scans = append(scans, scan)
+		}
+
+		idx := len(records)
+		records = append(records, MetricRecord{Metric: rd.Metric})
+		scan.Extremes = append(scan.Extremes, recordExtreme{Column: def.Column, Agg: "max", record: idx, high: true})
+		if rd.Low {
+			scan.Extremes = append(scan.Extremes, recordExtreme{Column: def.Column, Agg: "min", record: idx})
+		}
+	}
+
+	return records, scans
 }
 
 // GetRecords returns the curated record set for a period, cache first. A
@@ -180,27 +242,13 @@ func (c *TimescaleClient) GetRecords(ctx context.Context, catalog Catalog, perio
 		Complete: complete,
 	}
 
-	for _, rd := range recordDefs {
-		def, err := resolveMetric(rd.Metric, catalog)
-		if err != nil {
-			// A record metric names a column outside the live catalog. Skip it
-			// rather than fail the whole page; the column may not exist yet.
-			slog.Error("skipping unresolved record metric", slog.String("metric", rd.Metric), slog.String("error", err.Error()))
-			continue
-		}
-
-		mr := MetricRecord{Metric: rd.Metric}
-		mr.High, err = c.queryRecord(ctx, def, start, end, "DESC")
-		if err != nil {
-			return nil, err
-		}
-		if rd.Low {
-			mr.Low, err = c.queryRecord(ctx, def, start, end, "ASC")
-			if err != nil {
-				return nil, err
-			}
-		}
-		resp.Records = append(resp.Records, mr)
+	if period == "all" {
+		resp.Records, err = c.composeAllTime(ctx, catalog, now)
+	} else {
+		resp.Records, err = c.queryRecords(ctx, catalog, start, end)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	if c.Dfly != nil {
@@ -219,6 +267,62 @@ func (c *TimescaleClient) GetRecords(ctx context.Context, catalog Catalog, perio
 	return resp, nil
 }
 
+// composeAllTime builds the all-time records from the records of each calendar
+// year. Scanning the whole history in one request outgrew the query timeout,
+// and it never recovered because a failed result is never cached. A completed
+// year is cached with the long tier, so after the first fill an all-time
+// request costs about as much as the current year's. Each year is cached as it
+// completes, so a cold fill that times out still makes progress for the next
+// request.
+func (c *TimescaleClient) composeAllTime(ctx context.Context, catalog Catalog, now time.Time) ([]MetricRecord, error) {
+	var years []*RecordsResponse
+	for y := recordsAllStart.Year(); y <= now.In(recordsLocation).Year(); y++ {
+		yr, err := c.GetRecords(ctx, catalog, "year", time.Date(y, 1, 1, 0, 0, 0, 0, recordsLocation), now)
+		if err != nil {
+			return nil, err
+		}
+		years = append(years, yr)
+	}
+	return mergeRecords(years), nil
+}
+
+// mergeRecords combines record sets of consecutive periods, given oldest
+// first, into the records of their union. A tie keeps the earlier reading, so
+// a record is credited to when it was first reached.
+func mergeRecords(periods []*RecordsResponse) []MetricRecord {
+	var merged []MetricRecord
+	index := map[string]int{}
+
+	for _, p := range periods {
+		for _, mr := range p.Records {
+			i, ok := index[mr.Metric]
+			if !ok {
+				index[mr.Metric] = len(merged)
+				merged = append(merged, MetricRecord{Metric: mr.Metric})
+				i = len(merged) - 1
+			}
+			acc := &merged[i]
+			if mr.High != nil && (acc.High == nil || mr.High.Value > acc.High.Value) {
+				acc.High = mr.High
+			}
+			if mr.Low != nil && (acc.Low == nil || mr.Low.Value < acc.Low.Value) {
+				acc.Low = mr.Low
+			}
+		}
+	}
+
+	// Present metrics in curated order, whatever order the periods listed them.
+	order := map[string]int{}
+	for i, rd := range recordDefs {
+		order[rd.Metric] = i
+	}
+	sort.SliceStable(merged, func(a, b int) bool {
+		return order[merged[a].Metric] < order[merged[b].Metric]
+	})
+
+	return merged
+}
+
 // recordsCacheKey keys a record set by period and window start. The window
 // start alone fixes the window (period plus start implies end), so a completed
 // period keeps a stable key forever, while the current period's key is stable
@@ -228,32 +332,83 @@ func (c *TimescaleClient) recordsCacheKey(period string, start time.Time) string
 	return fmt.Sprintf("%s-%s", c.Dfly.KeyPrefix, strconv.FormatUint(xxhash.Sum64String(raw), 16))
 }
 
-// queryRecord runs one extreme lookup and returns the reading, or nil when the
-// window holds no reading for the metric.
-func (c *TimescaleClient) queryRecord(ctx context.Context, def metricDef, start, end time.Time, direction string) (*RecordExtreme, error) {
-	params := recordTemplateParams{
-		Table:          def.Table,
-		Column:         def.Column,
-		SerialFiltered: def.SerialFiltered,
-		Serial:         airgradientSerial,
-		// fire_danger carries late-2024 spin-up warm-up rows that would report a
-		// false extreme; exclude them, matching the fire danger summary.
-		ExcludeSpinup: def.Table == "fire_danger",
-		Direction:     direction,
+// queryRecords finds the curated record set over the window [start, end). A
+// metric with no reading in the window keeps a nil High/Low.
+func (c *TimescaleClient) queryRecords(ctx context.Context, catalog Catalog, start, end time.Time) ([]MetricRecord, error) {
+	records, scans := buildRecordScans(catalog)
+	for _, scan := range scans {
+		if err := c.runRecordScan(ctx, scan, start, end, records); err != nil {
+			return nil, err
+		}
 	}
+	return records, nil
+}
 
+// runRecordScan finds every extreme of one table in two scans: the first takes
+// the plain max/min of each column, the second the earliest time each value was
+// seen. Plain aggregates keep the per-row work cheap; an argmax in one scan
+// (max over ARRAY[value, time]) measured about five times slower than the
+// separate queries it replaced.
+func (c *TimescaleClient) runRecordScan(ctx context.Context, scan *recordScan, start, end time.Time, records []MetricRecord) error {
 	query := bytes.NewBuffer(nil)
-	if err := getRecordTmpl.Execute(query, params); err != nil {
-		return nil, fmt.Errorf("failed to execute record template: %w", err)
+	if err := getRecordValuesTmpl.Execute(query, scan); err != nil {
+		return fmt.Errorf("failed to execute record values template: %w", err)
 	}
 
-	var rec RecordExtreme
-	err := c.Pool.QueryRow(ctx, query.String(), start, end).Scan(&rec.Time, &rec.Value)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	values := make([]*float64, len(scan.Extremes))
+	dest := make([]any, len(values))
+	for i := range values {
+		dest[i] = &values[i]
 	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to query %s.%s record: %w", def.Table, def.Column, err)
+	if err := c.Pool.QueryRow(ctx, query.String(), start, end).Scan(dest...); err != nil {
+		return fmt.Errorf("failed to query %s record values: %w", scan.Table, err)
 	}
-	return &rec, nil
+
+	// Only extremes with a reading need a time; a nil value means the window
+	// holds no reading for that column.
+	found := &recordScan{
+		Table:          scan.Table,
+		SerialFiltered: scan.SerialFiltered,
+		Serial:         scan.Serial,
+		ExcludeSpinup:  scan.ExcludeSpinup,
+	}
+	args := []any{start, end}
+	for i, ex := range scan.Extremes {
+		if values[i] == nil {
+			continue
+		}
+		args = append(args, *values[i])
+		ex.Param = len(args)
+		found.Extremes = append(found.Extremes, ex)
+	}
+	if len(found.Extremes) == 0 {
+		return nil
+	}
+
+	query.Reset()
+	if err := getRecordTimesTmpl.Execute(query, found); err != nil {
+		return fmt.Errorf("failed to execute record times template: %w", err)
+	}
+
+	times := make([]*time.Time, len(found.Extremes))
+	dest = make([]any, len(times))
+	for i := range times {
+		dest[i] = &times[i]
+	}
+	if err := c.Pool.QueryRow(ctx, query.String(), args...).Scan(dest...); err != nil {
+		return fmt.Errorf("failed to query %s record times: %w", scan.Table, err)
+	}
+
+	for i, ex := range found.Extremes {
+		if times[i] == nil {
+			continue
+		}
+		rec := &RecordExtreme{Value: args[ex.Param-1].(float64), Time: *times[i]}
+		if ex.high {
+			records[ex.record].High = rec
+		} else {
+			records[ex.record].Low = rec
+		}
+	}
+	return nil
 }

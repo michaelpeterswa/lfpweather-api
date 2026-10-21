@@ -44,32 +44,50 @@ type recordDef struct {
 	Metric string
 	Low    bool
 	// Max, when set, is the highest physically plausible reading. A record high
-	// ignores anything above it, so a single glitched sample cannot stand as a
-	// record forever. It bounds only highs: the glitches seen are all spikes.
+	// ignores anything above it, so a glitched spike cannot stand as a record
+	// forever. It bounds only highs: the glitches seen are all spikes.
 	Max float64
+	// Exclude lists known-bad windows whose readings a record high ignores. A
+	// glitch is often a decaying run rather than one sample, and a run's tail
+	// can sit below any Max that would not also clip real readings.
+	Exclude []timeWindow
+}
+
+// timeWindow is a half-open interval [Start, End) of RFC3339 instants.
+type timeWindow struct {
+	Start, End string
 }
 
 // recordDefs is the curated, ordered set of metrics shown on the records page.
 // Each metric name resolves through the same allowlist and column catalog as
 // the structured query endpoint, so the set can only ever name a known column.
 //
-// The Max bounds come from glitches that became all-time records once the
-// all-time period started loading. Each was a single sample with ordinary
-// readings either side and no matching change in any other measurement:
+// The bounds and exclusions come from glitches that became all-time records
+// once the all-time period started loading:
 //
-//   - wind_gust 175.25 mph (2026-04-15); the next-highest day in two years
-//     was 17.9 mph, and the hours either side read about 5 mph.
-//   - rain_rate 3032 counts, 30.32 in/hr (2025-11-14), and 691.5 counts
-//     (2025-03-20), with the daily rain total flat through both. The highest
-//     real rate is 229 counts (2.29 in/hr). Rain is in 0.01 in bucket tips.
+//   - wind_gust 175.25 mph at 2026-04-15T17:43Z; the next-highest day in two
+//     years was 17.9 mph, and the hours either side read about 5 mph.
+//   - rain_rate runs starting at 691.5 counts (2025-03-20T15:35Z, decaying
+//     through 505.5 and 500, with 2 counts of rain in 15 minutes) and 3032
+//     counts (2025-11-14T18:20Z, decaying through 2880, alongside a
+//     non-credible 1.22 in in 15 minutes -- likely collector maintenance).
+//     The highest real rate is 229 counts (2.29 in/hr) on 2024-12-18, with
+//     27 counts of rain in the same 15 minutes. Rain is in 0.01 in tips.
 //
-// The bounds sit far above anything real at this station.
+// Max sits far above anything real here and catches future single spikes;
+// Exclude removes the known runs, whose tails a Max cannot reach without
+// clipping real rain. Raw rows are left as recorded.
 var recordDefs = []recordDef{
 	{Metric: "temperature", Low: true},
 	{Metric: "humidity", Low: true},
 	{Metric: "pressure", Low: true},
-	{Metric: "wind_gust", Max: 100},
-	{Metric: "rain_rate", Max: 500},
+	{Metric: "wind_gust", Max: 100, Exclude: []timeWindow{
+		{"2026-04-15T17:40:00Z", "2026-04-15T17:50:00Z"},
+	}},
+	{Metric: "rain_rate", Max: 500, Exclude: []timeWindow{
+		{"2025-03-20T15:30:00Z", "2025-03-20T16:00:00Z"},
+		{"2025-11-14T18:15:00Z", "2025-11-14T18:30:00Z"},
+	}},
 	{Metric: "rain_24h"},
 	{Metric: "solar_radiation"},
 	{Metric: "uv_index"},
@@ -161,12 +179,27 @@ var (
 // recordExtreme is one aggregate in a records scan: the high (max) or low
 // (min) of a column, and where its result goes.
 type recordExtreme struct {
-	Column string
-	Agg    string  // "max" for a high, "min" for a low
-	Max    float64 // when set, readings above it are ignored (see recordDef)
-	Param  int     // placeholder holding the value in the times query
-	record int     // index into RecordsResponse.Records
-	high   bool
+	Column  string
+	Agg     string       // "max" for a high, "min" for a low
+	Max     float64      // when set, readings above it are ignored (see recordDef)
+	Exclude []timeWindow // readings in these windows are ignored (see recordDef)
+	Param   int          // placeholder holding the value in the times query
+	record  int          // index into RecordsResponse.Records
+	high    bool
+}
+
+// Filter is the SQL condition a reading must meet to count toward this
+// extreme, or "" when every reading counts. Its parts are code constants from
+// recordDefs, never request input, so they are safe to inline.
+func (e recordExtreme) Filter() string {
+	var conds []string
+	if e.Max != 0 {
+		conds = append(conds, fmt.Sprintf("%s <= %s", e.Column, strconv.FormatFloat(e.Max, 'f', -1, 64)))
+	}
+	for _, w := range e.Exclude {
+		conds = append(conds, fmt.Sprintf(`NOT ("time" >= '%s' AND "time" < '%s')`, w.Start, w.End))
+	}
+	return strings.Join(conds, " AND ")
 }
 
 // recordScan is every extreme the curated set needs from one table. All of a
@@ -215,7 +248,7 @@ func buildRecordScans(catalog Catalog) ([]MetricRecord, []*recordScan) {
 
 		idx := len(records)
 		records = append(records, MetricRecord{Metric: rd.Metric})
-		scan.Extremes = append(scan.Extremes, recordExtreme{Column: def.Column, Agg: "max", Max: rd.Max, record: idx, high: true})
+		scan.Extremes = append(scan.Extremes, recordExtreme{Column: def.Column, Agg: "max", Max: rd.Max, Exclude: rd.Exclude, record: idx, high: true})
 		if rd.Low {
 			scan.Extremes = append(scan.Extremes, recordExtreme{Column: def.Column, Agg: "min", record: idx})
 		}
@@ -343,7 +376,7 @@ func mergeRecords(periods []*RecordsResponse) []MetricRecord {
 // recordsCacheVersion is part of every records cache key. Bump it when the
 // record definitions change, so completed periods cached under the old ones
 // (for the long tier, a month) are recomputed instead of served.
-const recordsCacheVersion = "2"
+const recordsCacheVersion = "3"
 
 // recordsCacheKey keys a record set by period and window start. The window
 // start alone fixes the window (period plus start implies end), so a completed

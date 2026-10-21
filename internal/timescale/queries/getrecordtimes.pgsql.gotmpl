@@ -3,7 +3,7 @@
 -- parameter; the cast matches that query's so the comparison is exact.
 SELECT
 {{- range $i, $e := .Extremes}}
-    {{if $i}},{{end}}min("time") FILTER (WHERE {{$e.Column}}::float8 = ${{$e.Param}})
+    {{if $i}},{{end}}min("time") FILTER (WHERE {{$e.Column}}::float8 = ${{$e.Param}}{{with $e.Filter}} AND {{.}}{{end}})
 {{- end}}
 FROM
     sensors.{{.Table}}

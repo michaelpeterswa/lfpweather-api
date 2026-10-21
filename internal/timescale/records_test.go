@@ -274,8 +274,8 @@ func TestRecordPlausibilityBound(t *testing.T) {
 			bounded = &ex
 		}
 	}
-	if bounded == nil || bounded.Max != 100 {
-		t.Fatalf("wind gust extreme = %+v, want Max 100", bounded)
+	if bounded == nil || bounded.Max != 100 || len(bounded.Exclude) != 1 {
+		t.Fatalf("wind gust extreme = %+v, want Max 100 and one excluded window", bounded)
 	}
 
 	var values strings.Builder
@@ -283,8 +283,21 @@ func TestRecordPlausibilityBound(t *testing.T) {
 	if err := getRecordValuesTmpl.Execute(&values, scan); err != nil {
 		t.Fatal(err)
 	}
-	want := "(max(wind_speed_high_last_10_min) FILTER (WHERE wind_speed_high_last_10_min <= 100))::float8"
+	filter := `wind_speed_high_last_10_min <= 100 AND NOT ("time" >= '2026-04-15T17:40:00Z' AND "time" < '2026-04-15T17:50:00Z')`
+	want := "(max(wind_speed_high_last_10_min) FILTER (WHERE " + filter + "))::float8"
 	if !strings.Contains(values.String(), want) {
 		t.Errorf("values query missing %q:\n%s", want, values.String())
+	}
+
+	// The times query must apply the same filter, or a value seen both inside
+	// and outside an excluded window could be timed to the glitch.
+	var times strings.Builder
+	bounded.Param = 3
+	scan.Extremes = []recordExtreme{*bounded}
+	if err := getRecordTimesTmpl.Execute(&times, scan); err != nil {
+		t.Fatal(err)
+	}
+	if want := "= $3 AND " + filter + ")"; !strings.Contains(times.String(), want) {
+		t.Errorf("times query missing %q:\n%s", want, times.String())
 	}
 }
